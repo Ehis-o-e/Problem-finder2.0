@@ -38,6 +38,24 @@ app.get('/health', async (_req: Request, res: Response) => {
     }
 });
 
+// Liveness check (no DB dependency) for uptime monitors
+app.get('/live', (_req: Request, res: Response) => {
+    res.status(200).json({
+        success: true,
+        message: 'Server is alive',
+        timestamp: new Date().toISOString()
+    });
+});
+
+// Root route (keeps default monitors happy)
+app.get('/', (_req: Request, res: Response) => {
+    res.status(200).json({
+        success: true,
+        message: 'OK',
+        timestamp: new Date().toISOString()
+    });
+});
+
 // API Routes
 // app.use('/api/v1/auth', authRoutes);
 // app.use('/api/v1/nurses', nurseRoutes);
