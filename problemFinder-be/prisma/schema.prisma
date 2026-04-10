@@ -11,3 +11,117 @@ generator client {
 datasource db {
   provider = "postgresql"
 }
+
+model Problem {
+  id              String         @id @default(uuid())
+  title           String
+  summary         String?
+  category        String         @db.VarChar(50)
+  confidenceScore Float?
+  source          String?        @default("reddit") @db.VarChar(50)
+  sourceUrl       String?
+  redditPostId    String?        @unique @db.VarChar(20)
+  upvotes         Int            @default(0)
+  commentCount    Int            @default(0)
+  createdAt       DateTime       @default(now())
+  expiresAt       DateTime?
+
+  threadMessages  ThreadMessage[] 
+  buildInterests  BuildInterest[]
+  notifications   Notification[]
+
+  @@map("problems")
+}
+
+
+model User {
+  id           String         @id @default(uuid())
+  username     String         @unique @db.VarChar(50)
+  email        String         @unique
+  passwordHash String
+  bio          String?
+  skills       String[]
+  links        Json?
+  createdAt    DateTime       @default(now())
+
+  messages        Message[]
+  threadMessages  ThreadMessage[]
+  directMessagesS DirectMessage[] @relation("SentDMs")
+  directMessagesR DirectMessage[] @relation("ReceivedDMs")
+  buildInterests  BuildInterest[]
+  notifications   Notification[]
+
+  @@map("users")
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  userId    String
+  content   String
+  parentId  String?
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent Message? @relation("Replies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies Message[] @relation("Replies")
+
+  @@map("messages")
+}
+
+model ThreadMessage {
+  id        String        @id @default(uuid())
+  problemId String
+  userId    String
+  content   String
+  parentId  String?
+  createdAt DateTime      @default(now())
+
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  user    User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent  ThreadMessage? @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies ThreadMessage[] @relation("ThreadReplies")
+
+  @@map("thread_messages")
+}
+
+model DirectMessage {
+  id          String @id @default(uuid())
+  senderId    String
+  receiverId  String
+  content     String
+  isRead      Boolean @default(false)
+  createdAt   DateTime @default(now())
+
+  sender   User @relation("SentDMs", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("ReceivedDMs", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@map("direct_messages")
+}
+
+model BuildInterest {
+  id         String   @id @default(uuid())
+  userId     String
+  problemId  String
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem @relation(fields: [problemId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, problemId])
+  @@map("build_interests")
+}
+
+model Notification {
+  id         String  @id @default(uuid())
+  userId     String
+  type       String   @db.VarChar(50)
+  message    String
+  problemId  String?
+  isRead     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem Problem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
+
+  @@map("notifications")
+}
