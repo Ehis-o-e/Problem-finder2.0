@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -16,13 +16,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: 'pnpm'
 
-      - name: Install deps
-        run: npm ci
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
 
-      - name: Build
-        run: npm run build
+      - name: Run production migrations
+        run: pnpm exec prisma migrate deploy
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        
+      - name: Build application
+        run: pnpm run build
