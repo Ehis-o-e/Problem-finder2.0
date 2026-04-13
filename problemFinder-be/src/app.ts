@@ -3,6 +3,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import prisma from './config/database';
+import queryParserRouter from "./queryParser.module/queryParser.route";
 
 const app = express();
 
@@ -57,7 +58,7 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // API Routes
-// app.use('/api/v1/auth', authRoutes);
+app.use("/api/v1/query-parser", queryParserRouter);
 // app.use('/api/v1/nurses', nurseRoutes);
 // app.use('/api/v1/patients', patientRoutes);
 // app.use('/api/v1/shifts', shiftRoutes);
