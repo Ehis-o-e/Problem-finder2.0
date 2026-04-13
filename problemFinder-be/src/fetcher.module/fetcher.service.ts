@@ -3,8 +3,8 @@ import { RawPost } from "../filter.module/filter.service";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_BASE_URL = "https://oauth.reddit.com";
-const POSTS_PER_PAGE = 25;
-const MAX_PAGES = 4;
+const POSTS_PER_PAGE = 10;
+const MAX_PAGES = 1;
 const DELAY_BETWEEN_SUBREDDITS_MS = 1000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;

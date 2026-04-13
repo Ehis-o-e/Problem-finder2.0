@@ -20,6 +20,7 @@ model Problem {
   confidenceScore Float?
   source          String?        @default("reddit") @db.VarChar(50)
   sourceUrl       String?
+  url             String?
   redditPostId    String?        @unique @db.VarChar(20)
   upvotes         Int            @default(0)
   commentCount    Int            @default(0)

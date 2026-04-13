@@ -2,7 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 // import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import prisma from './config/database';
+import prisma from './config/database.config';
 import queryParserRouter from "./queryParser.module/queryParser.route";
 
 const app = express();

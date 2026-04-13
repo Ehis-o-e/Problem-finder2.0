@@ -5,6 +5,7 @@ import { parseQuery } from "./queryParser.module/queryParser.service";
 import { fetchPosts } from "./fetcher.module/fetcher.service";
 import { filterPosts } from "./filter.module/filter.service";
 import { classifyPosts } from "./classifier.module/classifier.service";
+import { storePosts } from "./storage.module/storage.service";
 
 async function test(query: string) {
   console.log(`\nQuery: "${query}"\n`);
@@ -47,6 +48,13 @@ async function test(query: string) {
     console.log(`Upvotes: ${post.upvotes}`);
     console.log(`URL: ${post.url}`);
   });
+
+  console.log("Step 5: Storing posts...");
+  const result = await storePosts(classifiedPosts);
+  console.log(`\nPipeline complete:`);
+  console.log(`Total posts processed: ${result.total}`);
+  console.log(`Saved to DB: ${result.saved}`);
+  console.log(`Duplicates skipped: ${result.duplicates}`);
 }
 
-test("give me tech problem").catch(console.error);
+test("give me finance problem").catch(console.error);
