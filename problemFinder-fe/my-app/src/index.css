@@ -1,0 +1,112 @@
+:root {
+  --bg: #f3f4f6;
+  --panel: #ffffff;
+  --thread-bg: #f8f9fb;
+  --surface: #f5f7fa;
+  --surface-hover: #eceff3;
+  --assistant-bubble: #ffffff;
+  --user-bubble: #dbe1ea;
+  --user-text: #111827;
+  --card-bg: #ffffff;
+  --card-muted-bg: #f2f4f7;
+  --avatar-bg: #e5e7eb;
+  --avatar-text: #374151;
+  --border: #e5e7eb;
+  --text: #111827;
+  --muted: #6b7280;
+  --link: #374151;
+  --badge-bg: #e5e7eb;
+  --badge-text: #4b5563;
+  --send-bg: #111827;
+  --send-bg-hover: #1f2937;
+  --send-text: #f9fafb;
+  --focus: #9ca3af;
+  --focus-ring: rgba(156, 163, 175, 0.22);
+  --status-ready: #10b981;
+  --status-processing: #f59e0b;
+  --status-error: #ef4444;
+  --typing-dot: #6b7280;
+  --scroll-thumb: rgba(156, 163, 175, 0.45);
+  --shadow: 0 20px 40px rgba(17, 24, 39, 0.08);
+
+  color: var(--text);
+  background: var(--bg);
+  font-family:
+    "Inter",
+    "Segoe UI",
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111315;
+    --panel: #17191c;
+    --thread-bg: #141618;
+    --surface: #1c1f23;
+    --surface-hover: #23272c;
+    --assistant-bubble: #1b1f24;
+    --user-bubble: #2b3138;
+    --user-text: #f3f4f6;
+    --card-bg: #20242a;
+    --card-muted-bg: #1a1d21;
+    --avatar-bg: #252a30;
+    --avatar-text: #d1d5db;
+    --border: #2b3138;
+    --text: #f3f4f6;
+    --muted: #9ca3af;
+    --link: #e5e7eb;
+    --badge-bg: #2b3138;
+    --badge-text: #d1d5db;
+    --send-bg: #f3f4f6;
+    --send-bg-hover: #e5e7eb;
+    --send-text: #111827;
+    --focus: #6b7280;
+    --focus-ring: rgba(107, 114, 128, 0.24);
+    --status-ready: #34d399;
+    --status-processing: #fbbf24;
+    --status-error: #f87171;
+    --typing-dot: #d1d5db;
+    --scroll-thumb: rgba(107, 114, 128, 0.35);
+    --shadow: 0 20px 40px rgba(0, 0, 0, 0.28);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+}
+
+button,
+textarea,
+a {
+  font: inherit;
+}
+
+a {
+  color: inherit;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
