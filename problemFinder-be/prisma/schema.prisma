@@ -30,6 +30,8 @@ model Problem {
   threadMessages  ThreadMessage[] 
   buildInterests  BuildInterest[]
   notifications   Notification[]
+  chatSessions ChatSession[]
+  proposals    Proposal[]
 
   @@map("problems")
 }
@@ -51,6 +53,11 @@ model User {
   directMessagesR DirectMessage[] @relation("ReceivedDMs")
   buildInterests  BuildInterest[]
   notifications   Notification[]
+
+  chatSessions     ChatSession[]
+  proposals        Proposal[]
+  proposalComments ProposalComment[]
+  proposalInterests ProposalInterest[]
 
   @@map("users")
 }
@@ -125,4 +132,75 @@ model Notification {
   problem Problem? @relation(fields: [problemId], references: [id], onDelete: SetNull)
 
   @@map("notifications")
+}
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  userId    String?
+  problemId String?
+  createdAt DateTime      @default(now())
+
+  messages  ChatMessage[]
+  user      User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem   Problem?      @relation(fields: [problemId], references: [id], onDelete: SetNull)
+  proposals Proposal[]
+
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id        String      @id @default(uuid())
+  sessionId String
+  role      String      @db.VarChar(20)
+  content   String
+  createdAt DateTime    @default(now())
+
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model Proposal {
+  id          String   @id @default(uuid())
+  userId      String
+  problemId   String
+  sessionId   String?
+  title       String
+  description String
+  solution    String
+  createdAt   DateTime @default(now())
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  problem     Problem      @relation(fields: [problemId], references: [id], onDelete: Cascade)
+  session     ChatSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  comments    ProposalComment[]
+  interests   ProposalInterest[]
+
+  @@map("proposals")
+}
+
+model ProposalComment {
+  id         String   @id @default(uuid())
+  proposalId String
+  userId     String
+  content    String
+  createdAt  DateTime @default(now())
+
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("proposal_comments")
+}
+
+model ProposalInterest {
+  id         String   @id @default(uuid())
+  proposalId String
+  userId     String
+  createdAt  DateTime @default(now())
+
+  proposal   Proposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([proposalId, userId])
+  @@map("proposal_interests")
 }

@@ -4,6 +4,9 @@ import helmet from 'helmet';
 import morgan from 'morgan';
 import prisma from './config/database.config';
 import queryParserRouter from "./queryParser.module/queryParser.route";
+import discoverRouter from "./discover.module/discover.route";
+import aiChatBotRouter from "./agent.module/agent.route";
+import conversationRouter from "./conversation.module/conversation.route";
 
 const app = express();
 
@@ -59,7 +62,9 @@ app.get('/', (_req: Request, res: Response) => {
 
 // API Routes
 app.use("/api/v1/query-parser", queryParserRouter);
-// app.use('/api/v1/nurses', nurseRoutes);
+app.use("/api/v1/discover", discoverRouter);
+app.use("/api/v1/ai-chatbot", aiChatBotRouter);
+app.use("/api/v1/conversation", conversationRouter);
 // app.use('/api/v1/patients', patientRoutes);
 // app.use('/api/v1/shifts', shiftRoutes);
 
