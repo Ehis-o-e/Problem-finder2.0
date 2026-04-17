@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const queryParserSchema = z.object({
+export const discoverSchema = z.object({
   body: z.object({
     query: z
       .string({ error: "Query is required" })
@@ -10,4 +10,4 @@ export const queryParserSchema = z.object({
   }),
 });
 
-export type QueryParserSchema = z.infer<typeof queryParserSchema>;
+export type DiscoverSchema = z.infer<typeof discoverSchema>;

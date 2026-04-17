@@ -1,13 +1,15 @@
-import { DOMAIN_VOCABULARY } from "../queryParser.module/queryParser.vocabulary";
-import { FilteredPost } from "../filter.module/filter.service";
+import { DOMAIN_VOCABULARY, SUBREDDIT_MAP } from "./queryParser.vocabulary";
 
-export interface ClassifiedPost extends FilteredPost {
+export interface QueryParserResult {
   category: string;
+  matchedKeywords: string[];
   confidenceScore: number;
+  subreddits: string[];
 }
 
-// Reuse the same map from query parser — built once at startup
+// Built once at startup — never rebuilt on each request
 const keywordCategoryMap = new Map<string, string>();
+
 
 for (const [category, keywords] of Object.entries(DOMAIN_VOCABULARY)) {
   for (const keyword of keywords) {
@@ -15,14 +17,16 @@ for (const [category, keywords] of Object.entries(DOMAIN_VOCABULARY)) {
   }
 }
 
-function classifyPost(post: FilteredPost): ClassifiedPost {
-  const normalised = `${post.title} ${post.body}`.toLowerCase().trim();
+export function parseQuery(rawQuery: string): QueryParserResult {
+  const normalised = rawQuery.toLowerCase().trim();
 
   const scores: Record<string, number> = {};
+  const matchedKeywords: string[] = [];
 
   for (const [keyword, category] of keywordCategoryMap.entries()) {
     if (normalised.includes(keyword)) {
       scores[category] = (scores[category] || 0) + 1;
+      matchedKeywords.push(keyword);
     }
   }
 
@@ -40,13 +44,15 @@ function classifyPost(post: FilteredPost): ClassifiedPost {
       ? 0
       : parseFloat((topCategory.score / totalKeywordsInCategory).toFixed(2));
 
-  return {
-    ...post,
-    category: topCategory.score === 0 ? "General" : topCategory.category,
-    confidenceScore,
-  };
-}
+  const category =
+    topCategory.score === 0 ? "General" : topCategory.category;
 
-export function classifyPosts(posts: FilteredPost[]): ClassifiedPost[] {
-  return posts.map(classifyPost);
+  const subreddits = SUBREDDIT_MAP[category] ?? SUBREDDIT_MAP["General"];
+
+  return {
+    category,
+    matchedKeywords,
+    confidenceScore,
+    subreddits,
+  };
 }
