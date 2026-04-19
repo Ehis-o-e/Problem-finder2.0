@@ -200,7 +200,7 @@ export async function buildSessionPool(
   sessionId: string,
   query: string
 ): Promise<DiscoveryPipelineResult> {
-  const parsed = parseQuery(query);
+  const parsed = await parseQuery(query);
   const existingPool = getSessionPool(sessionId);
 
   if (existingPool && existingPool.category === parsed.category) {
@@ -299,7 +299,7 @@ export async function getCuratedProblemsForSession(
 export async function runDiscoveryPipeline(
   query: string
 ): Promise<DiscoveryPipelineResult> {
-  const parsed = parseQuery(query);
+  const parsed = await parseQuery(query);
 
   // Legacy behavior note:
   // The discovery pipeline used to fetch from Reddit immediately for every

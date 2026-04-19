@@ -34,9 +34,8 @@ function buildDiscoveryContext(
   result: Awaited<ReturnType<typeof buildSessionPool>>
 ): string {
   const headline =
-    result.problems.length === 0
-      ? "No stored problems matched this discovery run yet."
-      : `Here are relevant stored problems for the query "${query}":`;
+    result.problems.length === 0? "No stored problems matched this discovery run yet."
+    : `Here are relevant stored problems for the query "${query}":`;
 
   const problemList =
     result.problems.length === 0
@@ -86,6 +85,8 @@ function buildIntentFallback(
     "show me problems",
     "what problems",
     "find pain points",
+    "give me", 
+    "suggest problems",
   ];
 
   const intent =
@@ -100,10 +101,8 @@ function buildIntentFallback(
   };
 }
 
-async function detectIntent(
-  sessionId: string,
-  userMessage: string
-): Promise<IntentResult> {
+async function detectIntent(sessionId: string,userMessage: string): Promise<IntentResult> {
+
   const history = await agentService.getHistory(sessionId);
   const session = await agentService.getSessionWithHistory(sessionId);
   const sessionPool = getSessionPool(sessionId);
@@ -116,10 +115,8 @@ async function detectIntent(
     Boolean(session.problemId) ||
     Boolean(sessionPool && sessionPool.items.length > 0) ||
     history.length > 0;
-  const recentHistory = history
-    .slice(-6)
-    .map((message) => `${message.role}: ${message.content}`)
-    .join("\n");
+  const recentHistory = history.slice(-20).map((message) => 
+    `${message.role}: ${message.content}`).join("\n");
 
   const prompt = `
 You classify incoming chat messages for a problem-discovery backend.
