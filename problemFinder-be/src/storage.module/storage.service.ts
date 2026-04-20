@@ -165,6 +165,10 @@ async function savePost(
     useAI?: boolean;
   }
 ): Promise<void> {
+  if (!post.url || post.url.trim().length === 0) {
+    return;
+  }
+
   const { title, summary } =
     options?.useAI === false
       ? buildFallbackSummary(post)
@@ -199,11 +203,15 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
 }> {
   await purgeExpiredProblems();
 
+  const urlBackedPosts = posts.filter(
+    (post) => post.url && post.url.trim().length > 0
+  );
+
   let saved = 0;
   let duplicates = 0;
   let aiSummariesUsed = 0;
 
-  const prioritisedPosts = [...posts].sort((a, b) => b.upvotes - a.upvotes);
+  const prioritisedPosts = [...urlBackedPosts].sort((a, b) => b.upvotes - a.upvotes);
 
   for (const post of prioritisedPosts) {
     const duplicate = await isDuplicate(post);
@@ -226,7 +234,7 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
   return {
     saved,
     duplicates,
-    total: posts.length,
+    total: urlBackedPosts.length,
   };
 }
 
@@ -287,6 +295,7 @@ export async function getProblemsByCategory(
     where: {
       ...(category === "General" ? {} : { category }),
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      NOT: [{ url: null }, { url: "" }],
     },
     orderBy: [{ upvotes: "desc" }, { createdAt: "desc" }],
     take: limit,

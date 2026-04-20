@@ -43,10 +43,15 @@ export interface CuratedProblem {
 const DEFAULT_RESULT_COUNT = 3;
 const MAX_RESULT_COUNT = 10;
 
+function hasUsableUrl(url: string | null | undefined): url is string {
+  return typeof url === "string" && url.trim().length > 0;
+}
+
 function toSessionPoolItemsFromStoredProblems(
   problems: StoredProblem[]
 ): SessionPoolItem[] {
   return [...problems]
+    .filter((problem) => hasUsableUrl(problem.url))
     .sort((a, b) => b.upvotes - a.upvotes)
     .map((problem) => ({
       id: problem.id,
@@ -56,7 +61,7 @@ function toSessionPoolItemsFromStoredProblems(
       confidenceScore: problem.confidenceScore ?? 0,
       upvotes: problem.upvotes,
       commentCount: 0,
-      url: problem.url ?? "",
+      url: problem.url!,
       redditPostId: problem.id,
     }));
 }
@@ -72,6 +77,7 @@ function trimText(value: string, maxLength: number): string {
 
 function toSessionPoolItems(posts: ClassifiedPost[]): SessionPoolItem[] {
   return [...posts]
+    .filter((post) => hasUsableUrl(post.url))
     .sort((a, b) => b.upvotes - a.upvotes)
     .map((post) => ({
       id: post.redditPostId,
@@ -348,17 +354,20 @@ export async function runDiscoveryPipeline(
   }
 
   const classifiedPosts = classifyPosts(filteredPosts, parsed);
-  const { saved, duplicates, total } = await storePosts(classifiedPosts);
+  const urlBackedClassifiedPosts = classifiedPosts.filter((post) =>
+    hasUsableUrl(post.url)
+  );
+  const { saved, duplicates, total } = await storePosts(urlBackedClassifiedPosts);
 
   return {
     category: parsed.category,
     matchedKeywords: parsed.matchedKeywords,
     subreddits: parsed.subreddits,
-    candidates: classifiedPosts,
+    candidates: urlBackedClassifiedPosts,
     pipeline: {
       fetched: rawPosts.length,
       afterFilter: filteredPosts.length,
-      afterClassification: classifiedPosts.length,
+      afterClassification: urlBackedClassifiedPosts.length,
       saved,
       duplicates,
       total,
