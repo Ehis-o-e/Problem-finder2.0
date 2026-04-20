@@ -8,6 +8,7 @@ export interface RawPost {
   commentCount: number;
   url: string;
   redditPostId: string;
+  subreddit: string;
 }
 
 export interface FilteredPost extends RawPost {

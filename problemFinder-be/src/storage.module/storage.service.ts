@@ -1,6 +1,7 @@
 import prisma from "../config/database.config";
 import { callAI } from "../config/ai.config";
 import { ClassifiedPost } from "../classifier.module/classifier.service";
+import type { SubredditResult } from "../queryParser.module/queryParser.service";
 
 const MAX_AI_SUMMARIES_PER_RUN = 3;
 const FALLBACK_SUMMARY_LENGTH = 220;
@@ -22,8 +23,6 @@ function buildFallbackSummary(post: ClassifiedPost): {
   };
 }
 
-// AI cleaning is still available, but we now use it more selectively so one
-// discovery run does not fan out into an AI request for every single post.
 async function cleanAndSummariseWithAI(
   post: ClassifiedPost
 ): Promise<{ title: string; summary: string }> {
@@ -166,12 +165,14 @@ async function savePost(
     useAI?: boolean;
   }
 ): Promise<void> {
-  // The old version re-ran duplicate checks inside savePost() after storePosts()
-  // had already done the same work. We keep the note here because this is one of
-  // the main optimizations that reduces both DB work and request latency.
-  const { title, summary } = options?.useAI === false
-    ? buildFallbackSummary(post)
-    : await cleanAndSummariseWithAI(post);
+  if (!post.url || post.url.trim().length === 0) {
+    return;
+  }
+
+  const { title, summary } =
+    options?.useAI === false
+      ? buildFallbackSummary(post)
+      : await cleanAndSummariseWithAI(post);
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
@@ -202,11 +203,15 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
 }> {
   await purgeExpiredProblems();
 
+  const urlBackedPosts = posts.filter(
+    (post) => post.url && post.url.trim().length > 0
+  );
+
   let saved = 0;
   let duplicates = 0;
   let aiSummariesUsed = 0;
 
-  const prioritisedPosts = [...posts].sort((a, b) => b.upvotes - a.upvotes);
+  const prioritisedPosts = [...urlBackedPosts].sort((a, b) => b.upvotes - a.upvotes);
 
   for (const post of prioritisedPosts) {
     const duplicate = await isDuplicate(post);
@@ -216,9 +221,6 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
       continue;
     }
 
-    // We reserve AI summaries for only a few high-signal posts in each run.
-    // The rest still get stored with deterministic summaries so discovery keeps
-    // working without causing a burst of AI calls.
     const useAI = aiSummariesUsed < MAX_AI_SUMMARIES_PER_RUN;
     await savePost(post, { useAI });
 
@@ -232,7 +234,7 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
   return {
     saved,
     duplicates,
-    total: posts.length,
+    total: urlBackedPosts.length,
   };
 }
 
@@ -262,7 +264,7 @@ export interface SessionPoolState {
   query: string;
   category: string;
   matchedKeywords: string[];
-  subreddits: string[];
+  subreddits: SubredditResult[];
   items: SessionPoolItem[];
   shownIndexes: number[];
   lastPresentedIndexes: number[];
@@ -283,10 +285,6 @@ export function getSessionPool(
   return SESSION_POOLS.get(sessionId);
 }
 
-export function clearSessionPool(sessionId: string): void {
-  SESSION_POOLS.delete(sessionId);
-}
-
 export async function getProblemsByCategory(
   category: string,
   limit = 40
@@ -297,6 +295,7 @@ export async function getProblemsByCategory(
     where: {
       ...(category === "General" ? {} : { category }),
       OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      NOT: [{ url: null }, { url: "" }],
     },
     orderBy: [{ upvotes: "desc" }, { createdAt: "desc" }],
     take: limit,

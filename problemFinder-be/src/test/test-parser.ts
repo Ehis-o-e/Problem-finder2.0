@@ -2,7 +2,7 @@
 import { parseQuery } from "../queryParser.module/queryParser.service";
 
 async function test() {
-  const result = await parseQuery("I want to find problems with in architecture");
+  const result = await parseQuery("problems related with energy generation");
   console.log(result);
 }
 

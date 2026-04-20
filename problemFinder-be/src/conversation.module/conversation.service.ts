@@ -5,6 +5,7 @@ import {
   extractRequestedCount,
   getCuratedProblemsForSession,
 } from "../discover.module/discover.service";
+import type { SubredditResult } from "../queryParser.module/queryParser.service";
 import { getSessionPool } from "../storage.module/storage.service";
 import type { StoredProblem } from "../storage.module/storage.service";
 
@@ -58,7 +59,9 @@ Matched keywords: ${
       ? result.matchedKeywords.join(", ")
       : "none"
   }
-Subreddits searched: ${result.subreddits.join(", ")}
+Subreddits searched: ${result.subreddits
+    .map((subreddit: SubredditResult) => subreddit.name)
+    .join(", ")}
 Pipeline summary:
 - fetched: ${result.pipeline.fetched}
 - afterFilter: ${result.pipeline.afterFilter}
@@ -183,7 +186,7 @@ export async function handleConversation(
   discovery?: {
     category: string;
     matchedKeywords: string[];
-    subreddits: string[];
+    subreddits: SubredditResult[];
     pipeline: {
       fetched: number;
       afterFilter: number;
@@ -239,6 +242,48 @@ export async function handleConversation(
       reason: intentResult.reason,
       response,
     };
+  }
+
+  if (existingPool) {
+    const referenceResolution =
+      await agentService.extractDisplayedProblemReference(
+        userMessage,
+        existingPool
+      );
+
+    if (referenceResolution.displayIndex) {
+      const focusedContext = agentService.buildFocusedSessionProblemContext(
+        existingPool,
+        referenceResolution.displayIndex
+      );
+
+      if (focusedContext) {
+        const response = await agentService.chat(sessionId, userMessage, {
+          contextOverride: focusedContext,
+          historyMode: "user-only",
+        });
+
+        return {
+          intent: intentResult.intent,
+          reason: intentResult.reason,
+          response,
+        };
+      }
+    }
+
+    if (referenceResolution.refersToSpecificProblem) {
+      const response =
+        "I’m not completely sure which item from the last list you mean. Please refer to it by its number from that same list so I stay on the right issue.";
+
+      await agentService.saveMessage(sessionId, "user", userMessage);
+      await agentService.saveMessage(sessionId, "assistant", response);
+
+      return {
+        intent: intentResult.intent,
+        reason: `${intentResult.reason} Specific problem reference could not be resolved safely.`,
+        response,
+      };
+    }
   }
 
   const response = await agentService.chat(sessionId, userMessage, {
