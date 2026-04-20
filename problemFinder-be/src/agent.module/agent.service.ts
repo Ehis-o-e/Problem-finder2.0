@@ -28,10 +28,6 @@ If the user asks about something outside the provided problems, gently redirect 
 export async function cleanAndSummarise(
   post: ClassifiedPost
 ): Promise<{ title: string; summary: string }> {
-  // Legacy note: this helper predates the new conversation orchestration flow.
-  // It remains commented-in-place for review because you asked to keep changed
-  // code visible rather than removing it outright. The active chat flow below
-  // now works from stored Problem records and optional context overrides.
   const prompt = `
 You are a problem extraction assistant.
 Given a Reddit post, extract the core problem being described.
