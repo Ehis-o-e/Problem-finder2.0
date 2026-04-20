@@ -12,10 +12,12 @@ const app = express();
 
 // Middleware
 app.use(helmet()); // Security headers
-app.use(cors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-    credentials: true
-}));
+ app.use(cors({
+     origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+     credentials: true,
+     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization']
+ }));
 app.use(morgan('dev')); // Logging
 app.use(express.json()); // Parse JSON bodies
 app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
@@ -65,8 +67,7 @@ app.use("/api/v1/query-parser", queryParserRouter);
 app.use("/api/v1/discover", discoverRouter);
 app.use("/api/v1/ai-chatbot", aiChatBotRouter);
 app.use("/api/v1/conversation", conversationRouter);
-// app.use('/api/v1/patients', patientRoutes);
-// app.use('/api/v1/shifts', shiftRoutes);
+
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
