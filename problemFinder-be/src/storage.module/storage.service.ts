@@ -1,6 +1,7 @@
 import prisma from "../config/database.config";
 import { callAI } from "../config/ai.config";
 import { ClassifiedPost } from "../classifier.module/classifier.service";
+import type { SubredditResult } from "../queryParser.module/queryParser.service";
 
 const MAX_AI_SUMMARIES_PER_RUN = 3;
 const FALLBACK_SUMMARY_LENGTH = 220;
@@ -22,8 +23,6 @@ function buildFallbackSummary(post: ClassifiedPost): {
   };
 }
 
-// AI cleaning is still available, but we now use it more selectively so one
-// discovery run does not fan out into an AI request for every single post.
 async function cleanAndSummariseWithAI(
   post: ClassifiedPost
 ): Promise<{ title: string; summary: string }> {
@@ -166,12 +165,10 @@ async function savePost(
     useAI?: boolean;
   }
 ): Promise<void> {
-  // The old version re-ran duplicate checks inside savePost() after storePosts()
-  // had already done the same work. We keep the note here because this is one of
-  // the main optimizations that reduces both DB work and request latency.
-  const { title, summary } = options?.useAI === false
-    ? buildFallbackSummary(post)
-    : await cleanAndSummariseWithAI(post);
+  const { title, summary } =
+    options?.useAI === false
+      ? buildFallbackSummary(post)
+      : await cleanAndSummariseWithAI(post);
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
@@ -216,9 +213,6 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
       continue;
     }
 
-    // We reserve AI summaries for only a few high-signal posts in each run.
-    // The rest still get stored with deterministic summaries so discovery keeps
-    // working without causing a burst of AI calls.
     const useAI = aiSummariesUsed < MAX_AI_SUMMARIES_PER_RUN;
     await savePost(post, { useAI });
 
@@ -262,7 +256,7 @@ export interface SessionPoolState {
   query: string;
   category: string;
   matchedKeywords: string[];
-  subreddits: string[];
+  subreddits: SubredditResult[];
   items: SessionPoolItem[];
   shownIndexes: number[];
   lastPresentedIndexes: number[];
@@ -281,10 +275,6 @@ export function getSessionPool(
   sessionId: string
 ): SessionPoolState | undefined {
   return SESSION_POOLS.get(sessionId);
-}
-
-export function clearSessionPool(sessionId: string): void {
-  SESSION_POOLS.delete(sessionId);
 }
 
 export async function getProblemsByCategory(

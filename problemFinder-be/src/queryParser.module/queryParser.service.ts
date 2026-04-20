@@ -1,10 +1,17 @@
 import dotenv from "dotenv";
 dotenv.config();
 
+export interface SubredditResult {
+  name: string;
+  subscribers: number;
+  description: string;
+}
+
 export interface QueryParserResult {
   category: string;
   matchedKeywords: string[];
-  subreddits: string[];
+  subreddits: SubredditResult[];
+  originalQuery: string;
 }
 
 interface RedditSearchResponse {
@@ -26,7 +33,7 @@ const STOP_WORDS = new Set([
   "there", "some", "any", "can", "do", "get", "show", "tell",
   "please", "just", "really", "very", "more", "also", "would",
   "could", "should", "have", "has", "been", "was", "were", "am",
-  "problems", "issues", "find", "looking", "want", "help"
+  "problems", "problem", "issue", "issues", "find", "looking", "want", "help"
 ]);
 
 export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
@@ -36,40 +43,51 @@ export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
     .split(" ")
     .filter(w => w.length > 3 && !STOP_WORDS.has(w));
 
-  const category = keywords.join(" ") || "General";
-  const searchQuery = keywords.slice(0, 3).join(" ") || "general";
+  const searchQuery = keywords.slice(0, 2).join(" ") || "general";
 
   const subreddits = await findBestSubreddits(searchQuery);
+
+  // derive category from Reddit's top result — already a clean topic label
+  const category = subreddits[0]?.name.toLowerCase() || keywords[0] || "general";
 
   return {
     category,
     matchedKeywords: keywords,
     subreddits,
+    originalQuery: rawQuery,
   };
 }
 
-async function findBestSubreddits(searchQuery: string): Promise<string[]> {
+async function findBestSubreddits(searchQuery: string): Promise<SubredditResult[]> {
   console.log("Search query sent to Reddit:", searchQuery);
-  
+
   const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(searchQuery)}&type=sr&limit=5`;
 
   const res = await fetch(url, {
     headers: {
-      "User-Agent": process.env.REDDIT_USER_AGENT,
+      "User-Agent": process.env.REDDIT_USER_AGENT ?? "web:ProblemDiscoveryBot:1.0",
     },
   });
 
   if (!res.ok) {
     console.error("Reddit search failed:", res.status, res.statusText);
-    return ["general"]
-  };
+    return [{ name: "general", subscribers: 0, description: "" }];
+  }
 
-  const data = await res.json() as RedditSearchResponse;;
+  const data = await res.json() as RedditSearchResponse;
 
-  const subreddits: string[] = data.data.children
-    .map((c: any) => c.data as { display_name: string; subscribers: number })
-    .filter(s => s.subscribers > 1000)
-    .map(s => s.display_name);
+  const subreddits: SubredditResult[] = data.data.children
+    .map((c) => c.data)
+    .filter((s) => s.subscribers > 1000)
+    .map((s) => ({
+      name: s.display_name,
+      subscribers: s.subscribers,
+      description: s.public_description?.trim() || "No description available",
+    }));
 
-  return subreddits.length > 0 ? subreddits : ["general"];
+  console.log("Subreddits found:", subreddits);
+
+  return subreddits.length > 0
+    ? subreddits
+    : [{ name: "general", subscribers: 0, description: "" }];
 }

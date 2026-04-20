@@ -3,6 +3,7 @@ import type { ClassifiedPost } from "../classifier.module/classifier.service";
 import { fetchPosts } from "../fetcher.module/fetcher.service";
 import { filterPosts } from "../filter.module/filter.service";
 import { parseQuery } from "../queryParser.module/queryParser.service";
+import type { SubredditResult } from "../queryParser.module/queryParser.service"
 import {
   getSessionPool,
   getProblemsByCategory,
@@ -17,7 +18,7 @@ import { callAI } from "../config/ai.config";
 export interface DiscoveryPipelineResult {
   category: string;
   matchedKeywords: string[];
-  subreddits: string[];
+  subreddits: SubredditResult[];
   candidates: ClassifiedPost[];
   pipeline: {
     fetched: number;
@@ -306,7 +307,7 @@ export async function runDiscoveryPipeline(
   // discovery request. We now let buildSessionPool() do a DB-first category
   // check and only call this function when the requested category is not
   // already available in storage for reuse.
-  const rawPosts = await fetchPosts(parsed.subreddits);
+  const rawPosts = await fetchPosts(parsed.subreddits.map(s => s.name));
 
   if (rawPosts.length === 0) {
     return {
@@ -346,7 +347,7 @@ export async function runDiscoveryPipeline(
     };
   }
 
-  const classifiedPosts = classifyPosts(filteredPosts);
+  const classifiedPosts = classifyPosts(filteredPosts, parsed);
   const { saved, duplicates, total } = await storePosts(classifiedPosts);
 
   return {
