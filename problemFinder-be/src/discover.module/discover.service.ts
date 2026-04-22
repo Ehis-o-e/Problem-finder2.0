@@ -42,6 +42,7 @@ export interface CuratedProblem {
 
 const DEFAULT_RESULT_COUNT = 3;
 const MAX_RESULT_COUNT = 10;
+const MIN_SESSION_POOL_SIZE = DEFAULT_RESULT_COUNT;
 
 function hasUsableUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && url.trim().length > 0;
@@ -210,7 +211,11 @@ export async function buildSessionPool(
   const parsed = await parseQuery(query);
   const existingPool = getSessionPool(sessionId);
 
-  if (existingPool && existingPool.category === parsed.category) {
+  if (
+    existingPool &&
+    existingPool.category === parsed.category &&
+    existingPool.items.length >= MIN_SESSION_POOL_SIZE
+  ) {
     return {
       category: existingPool.category,
       matchedKeywords: existingPool.matchedKeywords,
@@ -230,7 +235,7 @@ export async function buildSessionPool(
 
   const storedProblems = await getProblemsByCategory(parsed.category, 40);
 
-  if (storedProblems.length > 0) {
+  if (storedProblems.length >= MIN_SESSION_POOL_SIZE) {
     saveSessionPool(sessionId, {
       query,
       category: parsed.category,
@@ -259,12 +264,17 @@ export async function buildSessionPool(
   }
 
   const discovery = await runDiscoveryPipeline(query);
+  const poolItems =
+    discovery.problems.length > 0
+      ? toSessionPoolItemsFromStoredProblems(discovery.problems)
+      : toSessionPoolItems(discovery.candidates);
+
   const sessionPool: SessionPoolState = {
     query,
     category: discovery.category,
     matchedKeywords: discovery.matchedKeywords,
     subreddits: discovery.subreddits,
-    items: toSessionPoolItems(discovery.candidates),
+    items: poolItems,
     shownIndexes: [],
     lastPresentedIndexes: [],
   };

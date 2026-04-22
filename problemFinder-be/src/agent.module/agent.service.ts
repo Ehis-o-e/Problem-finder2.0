@@ -325,8 +325,8 @@ ${problem.upvotes} upvotes ${problem.url}`
 
   const outro =
     curatedProblems.length === 1
-      ? `\n\nWould you like to explore why this problem exists, who is affected, and what possible solutions might look like?`
-      : `\n\nWhich of these problems would you like to explore further? You can refer to them as "the first one", "the second one", and so on.`;
+      ? `\n\nAsk about problem 1 if you want details, or say "more" to pull in more problems.`
+      : `\n\nReply with a number like "1" or "the second one" to explore one problem, or say "more" to pull in more problems.`;
 
   return `${intro}\n\n${formattedProblems}${outro}`;
 }
