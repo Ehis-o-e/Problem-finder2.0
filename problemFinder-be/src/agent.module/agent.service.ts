@@ -296,9 +296,46 @@ URL: ${problem.url}
   `.trim();
 }
 
+export function formatCuratedProblemsResponse(
+  sessionPool: SessionPoolState,
+  curatedProblems: CuratedProblem[],
+  options?: {
+    isAdditionalBatch?: boolean;
+  }
+): string {
+  const topicLabel = sessionPool.query.trim() || sessionPool.category;
+
+  if (curatedProblems.length === 0) {
+    return `I couldn't find any more problems with usable discussion links for "${topicLabel}" right now.`;
+  }
+
+  const intro = options?.isAdditionalBatch
+    ? `Here are ${curatedProblems.length} more problems related to ${topicLabel}:`
+    : curatedProblems.length === 1
+      ? `Here's 1 problem related to ${topicLabel}:`
+      : `Here are ${curatedProblems.length} problems related to ${topicLabel}:`;
+
+  const formattedProblems = curatedProblems
+    .map(
+      (problem, displayIndex) => `${displayIndex + 1}. **${problem.title}**
+${problem.summary}
+${problem.upvotes} upvotes ${problem.url}`
+    )
+    .join("\n\n");
+
+  const outro =
+    curatedProblems.length === 1
+      ? `\n\nWould you like to explore why this problem exists, who is affected, and what possible solutions might look like?`
+      : `\n\nWhich of these problems would you like to explore further? You can refer to them as "the first one", "the second one", and so on.`;
+
+  return `${intro}\n\n${formattedProblems}${outro}`;
+}
+
+/**
 /**
  * Builds context for a single focused problem the user selected.
- * Only injects that one problem — no list — so the AI cannot pick a different one.
+ * It keeps that one problem as the primary focus and also includes the last
+ * displayed list for reference when the user explicitly compares or switches items.
  */
 export function buildFocusedSessionProblemContext(
   sessionPool: SessionPoolState,
@@ -373,7 +410,7 @@ export async function chat(
   userMessage: string,
   options?: {
     contextOverride?: string;
-    historyMode?: "full" | "user-only" | "none";
+    historyMode?: "full" | "user-only";
   }
 ): Promise<string> {
   const session = await getSessionWithHistory(sessionId);
@@ -395,17 +432,14 @@ export async function chat(
     (await buildContext(session.problemId ?? undefined));
 
   const historyMode = options?.historyMode ?? "full";
-  const history =
-    historyMode === "none"
-      ? []
-      : session.messages
-          .filter((message) =>
-            historyMode === "user-only" ? message.role === "user" : true
-          )
-          .map((message) => ({
-            role: message.role as "user" | "assistant",
-            content: message.content,
-          }));
+  const history = session.messages
+    .filter((message) =>
+      historyMode === "user-only" ? message.role === "user" : true
+    )
+    .map((message) => ({
+      role: message.role as "user" | "assistant",
+      content: message.content,
+    }));
 
   const messages = [
     {

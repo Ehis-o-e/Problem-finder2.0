@@ -33,7 +33,8 @@ const STOP_WORDS = new Set([
   "there", "some", "any", "can", "do", "get", "show", "tell",
   "please", "just", "really", "very", "more", "also", "would",
   "could", "should", "have", "has", "been", "was", "were", "am",
-  "problems", "problem", "issue", "issues", "find", "looking", "want", "help"
+  "problems", "problem", "issue", "issues", "find", "looking", "want", "give",
+   "help"
 ]);
 
 export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
