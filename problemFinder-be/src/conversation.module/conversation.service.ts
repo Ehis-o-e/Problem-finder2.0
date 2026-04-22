@@ -16,6 +16,51 @@ interface IntentResult {
   reason: string;
 }
 
+function cleanMessageText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+async function normalizeUserMessageForRouting(userMessage: string): Promise<string> {
+  const cleanedUserMessage = cleanMessageText(userMessage);
+
+  if (!cleanedUserMessage) {
+    return userMessage;
+  }
+
+  const prompt = `
+You rewrite user chat messages into clear, proper English for backend intent routing.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "normalizedMessage": "string"
+}
+
+Rules:
+- Preserve the original meaning and request.
+- Fix spelling, grammar, shorthand, and slang.
+- Do not add new intent, detail, or topic.
+- Keep the message concise.
+- If the message is already clear, return it unchanged.
+- Preserve selection-style requests such as "1", "the first one", or "more" as naturally as possible.
+
+User message:
+${cleanedUserMessage}
+  `.trim();
+
+  try {
+    const response = await callAI(prompt);
+    const cleanedResponse = response.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleanedResponse) as {
+      normalizedMessage?: string;
+    };
+    const normalizedMessage = cleanMessageText(parsed.normalizedMessage ?? "");
+
+    return normalizedMessage.length > 0 ? normalizedMessage : cleanedUserMessage;
+  } catch (_error) {
+    return cleanedUserMessage;
+  }
+}
+
 function isAdditionalBatchRequest(userMessage: string): boolean {
   const normalised = userMessage.toLowerCase().trim();
 
@@ -197,15 +242,16 @@ export async function handleConversation(
     problems: StoredProblem[];
   };
 }> {
-  const intentResult = await detectIntent(sessionId, userMessage);
+  const normalizedUserMessage = await normalizeUserMessageForRouting(userMessage);
+  const intentResult = await detectIntent(sessionId, normalizedUserMessage);
   const existingPool = getSessionPool(sessionId);
-  const requestedCount = extractRequestedCount(userMessage);
+  const requestedCount = extractRequestedCount(normalizedUserMessage);
 
   if (intentResult.intent === "discovery") {
-    const discovery = await buildSessionPool(sessionId, userMessage);
+    const discovery = await buildSessionPool(sessionId, normalizedUserMessage);
     const { sessionPool, curatedProblems } = await getCuratedProblemsForSession(
       sessionId,
-      userMessage
+      normalizedUserMessage
     );
 
     const response = agentService.formatCuratedProblemsResponse(
@@ -227,7 +273,7 @@ export async function handleConversation(
   if (existingPool) {
     const referenceResolution =
       await agentService.extractDisplayedProblemReference(
-        userMessage,
+        normalizedUserMessage,
         existingPool
       );
 
@@ -269,7 +315,7 @@ export async function handleConversation(
   if (existingPool && requestedCount > 0) {
     const { sessionPool, curatedProblems } = await getCuratedProblemsForSession(
       sessionId,
-      userMessage
+      normalizedUserMessage
     );
 
     const response = agentService.formatCuratedProblemsResponse(

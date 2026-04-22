@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { callAI } from "../config/ai.config";
 dotenv.config();
 
 export interface SubredditResult {
@@ -34,26 +35,80 @@ const STOP_WORDS = new Set([
   "please", "just", "really", "very", "more", "also", "would",
   "could", "should", "have", "has", "been", "was", "were", "am",
   "problems", "problem", "issue", "issues", "find", "looking", "want", "give",
-   "help"
+   "help", "gimme", "lemme"
 ]);
 
-export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
-  const normalised = rawQuery.toLowerCase().trim();
+function uniqueTerms(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
 
-  const keywords = normalised
+function cleanQueryText(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+async function normalizeQueryForDiscovery(rawQuery: string): Promise<string> {
+  const cleanedRawQuery = cleanQueryText(rawQuery);
+
+  if (!cleanedRawQuery) {
+    return rawQuery;
+  }
+
+  const prompt = `
+You rewrite short user requests into clear, proper English for a problem-discovery search system.
+
+Return ONLY valid JSON in this exact shape:
+{
+  "normalizedQuery": "string"
+}
+
+Rules:
+- Preserve the user's original topic and intent.
+- Fix spelling, grammar, shorthand, and slang.
+- Expand phrases like "gimme" into normal English.
+- Keep the rewritten query concise.
+- Do not add new topics, constraints, or meaning.
+- If the query is already clear enough, return it unchanged.
+
+User query:
+${cleanedRawQuery}
+  `.trim();
+
+  try {
+    const response = await callAI(prompt);
+    const cleanedResponse = response.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(cleanedResponse) as {
+      normalizedQuery?: string;
+    };
+    const normalizedQuery = cleanQueryText(parsed.normalizedQuery ?? "");
+
+    return normalizedQuery.length > 0 ? normalizedQuery : cleanedRawQuery;
+  } catch (_error) {
+    return cleanedRawQuery;
+  }
+}
+
+export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
+  const normalizedQuery = await normalizeQueryForDiscovery(rawQuery);
+  const normalised = normalizedQuery.toLowerCase().trim();
+
+  const baseKeywords = normalised
     .split(" ")
     .filter(w => w.length > 3 && !STOP_WORDS.has(w));
 
-  const searchQuery = keywords.slice(0, 2).join(" ") || "general";
+  const searchQuery = baseKeywords.slice(0, 2).join(" ") || "general";
 
   const subreddits = await findBestSubreddits(searchQuery);
 
   // derive category from Reddit's top result — already a clean topic label
-  const category = subreddits[0]?.name.toLowerCase() || keywords[0] || "general";
+  const category = subreddits[0]?.name.toLowerCase() || baseKeywords[0] || "general";
+  const matchedKeywords = uniqueTerms([...baseKeywords, category]);
+
+  console.log("Original query:", rawQuery);
+  console.log("Normalized query:", normalizedQuery);
 
   return {
     category,
-    matchedKeywords: keywords,
+    matchedKeywords,
     subreddits,
     originalQuery: rawQuery,
   };
