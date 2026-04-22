@@ -209,38 +209,23 @@ export async function handleConversation(
       userMessage
     );
 
-    const response = await agentService.chat(sessionId, userMessage, {
-      contextOverride:
-        curatedProblems.length > 0
-          ? agentService.buildCuratedProblemsContext(sessionPool, curatedProblems)
-          : buildDiscoveryContext(userMessage, discovery),
-    });
+    const response =
+      curatedProblems.length > 0
+        ? agentService.formatCuratedProblemsResponse(sessionPool, curatedProblems)
+        : await agentService.chat(sessionId, userMessage, {
+            contextOverride: buildDiscoveryContext(userMessage, discovery),
+          });
+
+    if (curatedProblems.length > 0) {
+      await agentService.saveMessage(sessionId, "user", userMessage);
+      await agentService.saveMessage(sessionId, "assistant", response);
+    }
 
     return {
       intent: intentResult.intent,
       reason: intentResult.reason,
       response,
       discovery,
-    };
-  }
-
-  if (existingPool && requestedCount > 0) {
-    const { sessionPool, curatedProblems } = await getCuratedProblemsForSession(
-      sessionId,
-      userMessage
-    );
-
-    const response = await agentService.chat(sessionId, userMessage, {
-      contextOverride: agentService.buildCuratedProblemsContext(
-        sessionPool,
-        curatedProblems
-      ),
-    });
-
-    return {
-      intent: intentResult.intent,
-      reason: intentResult.reason,
-      response,
     };
   }
 
@@ -284,6 +269,30 @@ export async function handleConversation(
         response,
       };
     }
+  }
+
+  if (existingPool && requestedCount > 0) {
+    const { sessionPool, curatedProblems } = await getCuratedProblemsForSession(
+      sessionId,
+      userMessage
+    );
+
+    const response = agentService.formatCuratedProblemsResponse(
+      sessionPool,
+      curatedProblems,
+      {
+        isAdditionalBatch: true,
+      }
+    );
+
+    await agentService.saveMessage(sessionId, "user", userMessage);
+    await agentService.saveMessage(sessionId, "assistant", response);
+
+    return {
+      intent: intentResult.intent,
+      reason: intentResult.reason,
+      response,
+    };
   }
 
   const response = await agentService.chat(sessionId, userMessage, {
