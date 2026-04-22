@@ -42,6 +42,16 @@ Rules:
 - Keep the message concise.
 - If the message is already clear, return it unchanged.
 - Preserve selection-style requests such as "1", "the first one", or "more" as naturally as possible.
+- If the message is a discovery/search request, rewrite it into a short topic-focused search request.
+- Remove conversational filler that is not useful for search, such as "I would like information on", "can you tell me about", or "I want to know about".
+- Keep the actual topic terms and the user's search intent.
+
+Examples:
+- "gimme finance issue" -> "give me finance issues"
+- "I would like information on financial issues" -> "financial issues"
+- "can you tell me about problems in agriculture" -> "problems in agriculture"
+- "the first one" -> "the first one"
+- "more" -> "more"
 
 User message:
 ${cleanedUserMessage}
