@@ -164,9 +164,9 @@ async function savePost(
   options?: {
     useAI?: boolean;
   }
-): Promise<void> {
+): Promise<boolean> {
   if (!post.url || post.url.trim().length === 0) {
-    return;
+    return false;
   }
 
   const { title, summary } =
@@ -177,23 +177,34 @@ async function savePost(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
 
-  await prisma.problem.create({
-    data: {
-      title,
-      summary,
-      category: post.category,
-      confidenceScore: post.confidenceScore,
-      source: "reddit",
-      sourceUrl: post.url,
-      url: post.url,
-      redditPostId: post.redditPostId,
-      upvotes: post.upvotes,
-      commentCount: post.commentCount,
-      expiresAt,
-    },
-  });
+  try {
+    await prisma.problem.create({
+      data: {
+        title,
+        summary,
+        category: post.category,
+        confidenceScore: post.confidenceScore,
+        source: "reddit",
+        sourceUrl: post.url,
+        url: post.url,
+        redditPostId: post.redditPostId,
+        upvotes: post.upvotes,
+        commentCount: post.commentCount,
+        expiresAt,
+      },
+    });
 
-  console.log(`Saved: ${title}`);
+    console.log(`Saved: ${title}`);
+    return true;
+  } catch (error) {
+    console.error("Skipping malformed or invalid problem record", {
+      redditPostId: post.redditPostId,
+      titlePreview: post.title.slice(0, 120),
+      url: post.url,
+      error,
+    });
+    return false;
+  }
 }
 
 export async function storePosts(posts: ClassifiedPost[]): Promise<{
@@ -209,6 +220,7 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
 
   let saved = 0;
   let duplicates = 0;
+  let skipped = 0;
   let aiSummariesUsed = 0;
 
   const prioritisedPosts = [...urlBackedPosts].sort((a, b) => b.upvotes - a.upvotes);
@@ -222,13 +234,22 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
     }
 
     const useAI = aiSummariesUsed < MAX_AI_SUMMARIES_PER_RUN;
-    await savePost(post, { useAI });
+    const didSave = await savePost(post, { useAI });
+
+    if (!didSave) {
+      skipped++;
+      continue;
+    }
 
     if (useAI) {
       aiSummariesUsed++;
     }
 
     saved++;
+  }
+
+  if (skipped > 0) {
+    console.warn(`Skipped ${skipped} malformed or invalid problem record(s) during storage`);
   }
 
   return {
