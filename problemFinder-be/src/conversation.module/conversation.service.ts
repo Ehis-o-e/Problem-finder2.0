@@ -16,6 +16,42 @@ interface IntentResult {
   reason: string;
 }
 
+function isAdditionalBatchRequest(userMessage: string): boolean {
+  const normalised = userMessage.toLowerCase().trim();
+
+  return (
+    normalised === "more" ||
+    normalised === "show me more" ||
+    normalised === "give me more" ||
+    normalised === "another" ||
+    normalised === "another one" ||
+    normalised === "next"
+  );
+}
+
+function isExplicitDiscoveryRequest(userMessage: string): boolean {
+  const normalised = userMessage.toLowerCase();
+  const discoverySignals = [
+    "find problems",
+    "discover",
+    "search for",
+    "look for",
+    "show me",
+    "what problems",
+    "find pain points",
+    "give me",
+    "suggest problems",
+    "issues in",
+    "problems in",
+    "pain points in",
+  ];
+
+  return (
+    discoverySignals.some((signal) => normalised.includes(signal)) &&
+    !isAdditionalBatchRequest(userMessage)
+  );
+}
+
 /*
 Legacy note:
 The previous version of conversation.service.ts also owned:
@@ -29,51 +65,6 @@ That code has been moved under discover/storage/agent so conversation can go
 back to being an orchestrator. Keeping the note here preserves what changed
 for your review without hiding the architectural shift.
 */
-
-function buildDiscoveryContext(
-  query: string,
-  result: Awaited<ReturnType<typeof buildSessionPool>>
-): string {
-  const headline =
-    result.problems.length === 0? "No stored problems matched this discovery run yet."
-    : `Here are relevant stored problems for the query "${query}":`;
-
-  const problemList =
-    result.problems.length === 0
-      ? "No matching stored problems were available after the pipeline run."
-      : result.problems
-          .map(
-            (problem, index) =>
-              `${index + 1}. [${problem.category}] ${problem.title}\n   ${
-                problem.summary ?? "No summary available."
-              }`
-          )
-          .join("\n");
-
-  return `
-Discovery request detected.
-Requested query: ${query}
-Matched category: ${result.category}
-Matched keywords: ${
-    result.matchedKeywords.length > 0
-      ? result.matchedKeywords.join(", ")
-      : "none"
-  }
-Subreddits searched: ${result.subreddits
-    .map((subreddit: SubredditResult) => subreddit.name)
-    .join(", ")}
-Pipeline summary:
-- fetched: ${result.pipeline.fetched}
-- afterFilter: ${result.pipeline.afterFilter}
-- afterClassification: ${result.pipeline.afterClassification}
-- saved: ${result.pipeline.saved}
-- duplicates: ${result.pipeline.duplicates}
-- total: ${result.pipeline.total}
-
-${headline}
-${problemList}
-  `.trim();
-}
 
 function buildIntentFallback(
   userMessage: string,
@@ -118,6 +109,14 @@ async function detectIntent(sessionId: string,userMessage: string): Promise<Inte
     Boolean(session.problemId) ||
     Boolean(sessionPool && sessionPool.items.length > 0) ||
     history.length > 0;
+
+  if (isExplicitDiscoveryRequest(userMessage)) {
+    return {
+      intent: "discovery",
+      reason: "Deterministic routing matched an explicit problem-discovery request.",
+    };
+  }
+
   const recentHistory = history.slice(-20).map((message) => 
     `${message.role}: ${message.content}`).join("\n");
 
@@ -209,17 +208,13 @@ export async function handleConversation(
       userMessage
     );
 
-    const response =
-      curatedProblems.length > 0
-        ? agentService.formatCuratedProblemsResponse(sessionPool, curatedProblems)
-        : await agentService.chat(sessionId, userMessage, {
-            contextOverride: buildDiscoveryContext(userMessage, discovery),
-          });
+    const response = agentService.formatCuratedProblemsResponse(
+      sessionPool,
+      curatedProblems
+    );
 
-    if (curatedProblems.length > 0) {
-      await agentService.saveMessage(sessionId, "user", userMessage);
-      await agentService.saveMessage(sessionId, "assistant", response);
-    }
+    await agentService.saveMessage(sessionId, "user", userMessage);
+    await agentService.saveMessage(sessionId, "assistant", response);
 
     return {
       intent: intentResult.intent,
