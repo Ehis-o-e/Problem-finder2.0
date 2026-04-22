@@ -1,5 +1,4 @@
 import dotenv from "dotenv";
-import { callAI } from "../config/ai.config";
 dotenv.config();
 
 export interface SubredditResult {
@@ -46,50 +45,9 @@ function cleanQueryText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-async function normalizeQueryForDiscovery(rawQuery: string): Promise<string> {
-  const cleanedRawQuery = cleanQueryText(rawQuery);
-
-  if (!cleanedRawQuery) {
-    return rawQuery;
-  }
-
-  const prompt = `
-You rewrite short user requests into clear, proper English for a problem-discovery search system.
-
-Return ONLY valid JSON in this exact shape:
-{
-  "normalizedQuery": "string"
-}
-
-Rules:
-- Preserve the user's original topic and intent.
-- Fix spelling, grammar, shorthand, and slang.
-- Expand phrases like "gimme" into normal English.
-- Keep the rewritten query concise.
-- Do not add new topics, constraints, or meaning.
-- If the query is already clear enough, return it unchanged.
-
-User query:
-${cleanedRawQuery}
-  `.trim();
-
-  try {
-    const response = await callAI(prompt);
-    const cleanedResponse = response.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleanedResponse) as {
-      normalizedQuery?: string;
-    };
-    const normalizedQuery = cleanQueryText(parsed.normalizedQuery ?? "");
-
-    return normalizedQuery.length > 0 ? normalizedQuery : cleanedRawQuery;
-  } catch (_error) {
-    return cleanedRawQuery;
-  }
-}
-
 export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
-  const normalizedQuery = await normalizeQueryForDiscovery(rawQuery);
-  const normalised = normalizedQuery.toLowerCase().trim();
+  const cleanedQuery = cleanQueryText(rawQuery);
+  const normalised = cleanedQuery.toLowerCase();
 
   const baseKeywords = normalised
     .split(" ")
@@ -104,7 +62,8 @@ export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
   const matchedKeywords = uniqueTerms([...baseKeywords, category]);
 
   console.log("Original query:", rawQuery);
-  console.log("Normalized query:", normalizedQuery);
+  console.log("Parser query:", cleanedQuery);
+  console.log("Keyword candidates:", matchedKeywords);
 
   return {
     category,
