@@ -306,7 +306,9 @@ export function formatCuratedProblemsResponse(
   const topicLabel = sessionPool.query.trim() || sessionPool.category;
 
   if (curatedProblems.length === 0) {
-    return `I couldn't find any more problems with usable discussion links for "${topicLabel}" right now.`;
+    return options?.isAdditionalBatch
+      ? `I couldn't find any more problems with usable discussion links for "${topicLabel}" right now.`
+      : `I couldn't find any problems with usable discussion links for "${topicLabel}" right now.`;
   }
 
   const intro = options?.isAdditionalBatch

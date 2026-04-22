@@ -75,10 +75,6 @@ function createThread(firstMessage: string): ChatThread {
   };
 }
 
-function sanitizeUrl(rawUrl: string): string {
-  return rawUrl.replace(/[)\].,;:!?]+$/g, "");
-}
-
 function renderFormattedMessage(content: string) {
   const urlPattern = /(https?:\/\/[^\s]+)/g;
   const boldPattern = /(\*\*[^*]+\*\*)/g;
@@ -90,13 +86,10 @@ function renderFormattedMessage(content: string) {
       }
 
       if (/^https?:\/\//.test(part)) {
-        const sanitizedUrl = sanitizeUrl(part);
-        const trailingText = part.slice(sanitizedUrl.length);
-
         return (
           <Fragment key={`${lineKey}-url-${partIndex}`}>
             <a
-              href={sanitizedUrl}
+              href={part}
               target="_blank"
               rel="noreferrer"
               style={{
@@ -106,9 +99,8 @@ function renderFormattedMessage(content: string) {
                 wordBreak: "break-all",
               }}
             >
-              {sanitizedUrl}
+              {part}
             </a>
-            {trailingText}
           </Fragment>
         );
       }
@@ -140,7 +132,6 @@ function renderFormattedMessage(content: string) {
     const upvoteMatch = line.match(/(\d[\d,]*)\s+upvotes/i);
 
     if (urlMatch && upvoteMatch) {
-      const sanitizedUrl = sanitizeUrl(urlMatch[0]);
       const prefix = line
         .slice(0, upvoteMatch.index)
         .replace(
@@ -161,7 +152,7 @@ function renderFormattedMessage(content: string) {
           <span>{`${upvoteMatch[1]} upvotes`}</span>
           <br />
           <a
-            href={sanitizedUrl}
+            href={urlMatch[0]}
             target="_blank"
             rel="noreferrer"
             style={{
