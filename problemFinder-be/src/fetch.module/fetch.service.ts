@@ -4,7 +4,6 @@ const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_BASE_URL = "https://oauth.reddit.com";
 const POSTS_PER_PAGE = 20;
 const MAX_PAGES = 4;
-const DELAY_BETWEEN_SUBREDDITS_MS = 1000;
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
 
@@ -156,22 +155,28 @@ async function fetchFromAllSubreddits(
   subreddits: string[],
   token: string
 ): Promise<RawPost[]> {
-  const allPosts: RawPost[] = [];
   const seenIds = new Set<string>();
 
-  for (const subreddit of subreddits) {
-    const posts = await fetchWithRetry(subreddit, token);
+  // fetch all subreddits in parallel instead of sequentially
+  const results = await Promise.all(
+    subreddits.map(subreddit => fetchWithRetry(subreddit, token))
+  );
 
+  const allPosts: RawPost[] = [];
+
+  for (const posts of results) {
     for (const post of posts) {
       if (!seenIds.has(post.redditPostId)) {
         seenIds.add(post.redditPostId);
         allPosts.push(post);
       }
     }
-
-    console.log(`Fetched ${posts.length} posts from r/${subreddit}`);
-    await delay(DELAY_BETWEEN_SUBREDDITS_MS);
   }
+
+  // log after all fetches complete
+  results.forEach((posts, index) => {
+    console.log(`Fetched ${posts.length} posts from r/${subreddits[index]}`);
+  });
 
   return allPosts;
 }
