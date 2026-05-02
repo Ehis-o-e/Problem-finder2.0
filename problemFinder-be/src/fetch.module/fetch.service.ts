@@ -1,5 +1,4 @@
 import axios, { AxiosResponse } from "axios";
-import { RawPost } from "../filter.module/filter.service";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_BASE_URL = "https://oauth.reddit.com";
@@ -12,9 +11,26 @@ const RETRY_DELAY_MS = 2000;
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
 
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface RawPost {
+  id: string;
+  title: string;
+  body: string;
+  upvotes: number;
+  commentCount: number;
+  url: string;
+  redditPostId: string;
+  subreddit: string;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
 
 async function getAccessToken(): Promise<string> {
   const now = Date.now();
@@ -43,6 +59,8 @@ async function getAccessToken(): Promise<string> {
 
   return cachedToken!;
 }
+
+// ─── Fetch ────────────────────────────────────────────────────────────────────
 
 async function fetchFromSubreddit(
   subreddit: string,
@@ -97,6 +115,8 @@ async function fetchFromSubreddit(
   return posts;
 }
 
+// ─── Retry ────────────────────────────────────────────────────────────────────
+
 async function fetchWithRetry(
   subreddit: string,
   token: string,
@@ -130,15 +150,24 @@ async function fetchWithRetry(
   }
 }
 
+// ─── Aggregate ────────────────────────────────────────────────────────────────
+
 async function fetchFromAllSubreddits(
   subreddits: string[],
   token: string
 ): Promise<RawPost[]> {
   const allPosts: RawPost[] = [];
+  const seenIds = new Set<string>();
 
   for (const subreddit of subreddits) {
     const posts = await fetchWithRetry(subreddit, token);
-    allPosts.push(...posts);
+
+    for (const post of posts) {
+      if (!seenIds.has(post.redditPostId)) {
+        seenIds.add(post.redditPostId);
+        allPosts.push(post);
+      }
+    }
 
     console.log(`Fetched ${posts.length} posts from r/${subreddit}`);
     await delay(DELAY_BETWEEN_SUBREDDITS_MS);
@@ -146,6 +175,8 @@ async function fetchFromAllSubreddits(
 
   return allPosts;
 }
+
+// ─── Export ───────────────────────────────────────────────────────────────────
 
 export async function fetchPosts(subreddits: string[]): Promise<RawPost[]> {
   const token = await getAccessToken();

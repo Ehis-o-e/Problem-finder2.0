@@ -10,7 +10,9 @@ import {
   X,
 } from "lucide-react";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ??
+  (import.meta.env.DEV ? "http://localhost:5050/api/v1" : "/api/v1");
 const MAX_TEXTAREA_HEIGHT = 160;
 const DESKTOP_BREAKPOINT = 1024;
 const SIDEBAR_OPEN_WIDTH = 264;
@@ -21,12 +23,14 @@ type ChatRole = "assistant" | "user";
 type ConversationSessionResponse = {
   success: boolean;
   message?: string;
+  error?: { code?: string; message?: string };
   data?: { sessionId: string };
 };
 
 type ConversationChatResponse = {
   success: boolean;
   message?: string;
+  error?: { code?: string; message?: string };
   data?: {
     intent: "discovery" | "conversation";
     reason: string;
@@ -49,6 +53,15 @@ type ChatThread = {
   messages: ConversationMessage[];
   updatedAt: number;
 };
+
+function getApiErrorMessage(
+  payload: { message?: string; error?: { message?: string } } | null,
+  fallback: string,
+  status?: number
+): string {
+  const message = payload?.error?.message?.trim() || payload?.message?.trim();
+  return message || (status ? `${fallback} (HTTP ${status})` : fallback);
+}
 
 const timeFormatter = new Intl.DateTimeFormat([], {
   hour: "2-digit",
@@ -282,9 +295,14 @@ export default function App() {
       body: JSON.stringify({}),
     });
 
-    const payload = (await response.json()) as ConversationSessionResponse;
-    if (!response.ok || !payload.success || !payload.data?.sessionId) {
-      throw new Error(payload.message ?? "Could not create session.");
+    const payload = (await response
+      .json()
+      .catch(() => null)) as ConversationSessionResponse | null;
+
+    if (!response.ok || !payload?.success || !payload.data?.sessionId) {
+      throw new Error(
+        getApiErrorMessage(payload, "Could not create session.", response.status)
+      );
     }
 
     updateChat(chatId, (chat) => ({
@@ -324,9 +342,14 @@ export default function App() {
         body: JSON.stringify({ sessionId, message: text }),
       });
 
-      const payload = (await response.json()) as ConversationChatResponse;
-      if (!response.ok || !payload.success || !payload.data) {
-        throw new Error(payload.message ?? "Assistant failed to respond.");
+      const payload = (await response
+        .json()
+        .catch(() => null)) as ConversationChatResponse | null;
+
+      if (!response.ok || !payload?.success || !payload.data) {
+        throw new Error(
+          getApiErrorMessage(payload, "Assistant failed to respond.", response.status)
+        );
       }
 
       appendMessage(targetId, {

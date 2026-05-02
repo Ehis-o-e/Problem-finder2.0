@@ -52,7 +52,7 @@ The backend currently needs more variables than the checked-in `.env.example` sh
 ```env
 NODE_ENV=development
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/problemfinder_dev?schema=public"
-PORT=5000
+PORT=5050
 CORS_ORIGIN=http://localhost:5173
 
 # AI
@@ -69,7 +69,7 @@ REDDIT_USER_AGENT=web:ProblemFinder2.0:1.0
 ### Frontend: `problemFinder-fe/my-app/.env`
 
 ```env
-VITE_API_BASE_URL=http://localhost:5000/api/v1
+VITE_API_BASE_URL=http://localhost:5050/api/v1
 ```
 
 If `VITE_API_BASE_URL` is not set, the frontend falls back to `/api/v1`.
@@ -102,7 +102,7 @@ npm run dev
 Default local URLs:
 
 - Frontend: `http://localhost:5173`
-- Backend: `http://localhost:5000`
+- Backend: `http://localhost:5050`
 
 ## Useful backend scripts
 
@@ -175,10 +175,9 @@ The README focuses on the discovery/chat parts of the app, but the schema alread
 - Session pool state is stored in memory. If the backend restarts, the numbered discovery context for active sessions is lost even though chat messages remain in the database.
 - The frontend chat list is client-side only. Refreshing the browser clears the visible sidebar chat history unless that state is rebuilt manually.
 - The backend `.env.example` is incomplete right now. Reddit and AI credentials are required for full discovery/chat behavior but are not all documented there.
-- `CORS_ORIGIN` in `.env.example` still points to `http://localhost:3000`, while the Vite frontend runs on `http://localhost:5173` by default.
 - There is no full authentication flow wired into the current chat UI, so the main experience behaves like a guest session.
 - There are test helper files in `src/test`, but no real automated test suite is configured under `npm test` yet.
-
+- still uses key words in some places
 ## Suggested next improvements
 
 - Expand `.env.example` so setup matches actual runtime requirements

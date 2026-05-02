@@ -1,77 +1,96 @@
 import { FilteredPost } from "../filter.module/filter.service";
 import { QueryParserResult } from "../queryParser.module/queryParser.service";
+import { embed, cosineSimilarity } from "../embedding.module/embedding.service";
 
 export interface ClassifiedPost extends FilteredPost {
   category: string;
   confidenceScore: number;
-  matchedTerms: string[];
   relevanceReason: string;
 }
 
-function scorePost(
-  post: FilteredPost,
-  parsed: QueryParserResult
-): { score: number; matchedTerms: string[]; reason: string } {
-  const title = post.title.toLowerCase();
-  const body = post.body.toLowerCase();
-  const subreddit = (post.subreddit ?? "").toLowerCase();
+const CLASSIFIER_THRESHOLD = 0.2  ;
 
-  const matchedTerms: string[] = [];
-  let rawScore = 0;
-
-  for (const keyword of parsed.matchedKeywords) {
-    // title match — highest weight
-    if (title.includes(keyword)) {
-      rawScore += 3;
-      matchedTerms.push(`title:${keyword}`);
-    }
-    // body match — medium weight
-    if (body.includes(keyword)) {
-      rawScore += 2;
-      matchedTerms.push(`body:${keyword}`);
-    }
-    // subreddit name match — medium weight
-    if (subreddit.includes(keyword)) {
-      rawScore += 2;
-      matchedTerms.push(`subreddit:${keyword}`);
-    }
-  }
-
-  // bonus if category word appears in title
-  if (title.includes(parsed.category)) {
-    rawScore += 2;
-  }
-
-  // normalize to 0-1
-  const maxPossibleScore = parsed.matchedKeywords.length * 7; // 3+2+2 per keyword
-  const score = maxPossibleScore > 0
-    ? parseFloat((rawScore / maxPossibleScore).toFixed(2))
-    : 0;
-
-  // build a human readable reason
-  const uniqueMatches = [...new Set(matchedTerms.map(t => t.split(":")[1]))];
-  const reason = uniqueMatches.length > 0
-    ? `matched: ${uniqueMatches.join(", ")}`
-    : "no match";
-
-  return { score, matchedTerms, reason };
+function previewTitle(title: string): string {
+  return title.length > 90 ? `${title.slice(0, 90).trim()}...` : title;
 }
 
-export function classifyPosts(
+async function scorePost(
+  post: FilteredPost,
+  topicVector: number[]
+): Promise<{ score: number; reason: string }> {
+  const postText = `${post.title} ${post.body}`.trim();
+  const postVector = await embed(postText);
+
+  const score = parseFloat(
+    cosineSimilarity(postVector, topicVector).toFixed(2)
+  );
+
+  const reason =
+    score >= 0.5
+      ? "strong match with topic"
+      : score >= 0.35
+        ? "moderate match with topic"
+        : "weak match with topic";
+
+  return { score, reason };
+}
+
+export async function classifyPosts(
   posts: FilteredPost[],
   parsed: QueryParserResult
-): ClassifiedPost[] {
-  return posts
-    .map(post => {
-      const { score, matchedTerms, reason } = scorePost(post, parsed);
-      return {
+): Promise<ClassifiedPost[]> {
+  const topicVector = await embed(parsed.originalQuery);
+
+  const scored = await Promise.all(
+    posts.map(async (post) => {
+      const { score, reason } = await scorePost(post, topicVector);
+      const classifierResult: ClassifiedPost = {
         ...post,
         category: parsed.category,
         confidenceScore: score,
-        matchedTerms,
         relevanceReason: reason,
       };
+
+      console.log(
+        `[Classifier] ${score > CLASSIFIER_THRESHOLD ? "PASS" : "FAIL"} score=${score.toFixed(2)} threshold=${CLASSIFIER_THRESHOLD.toFixed(2)} title="${previewTitle(post.title)}"`
+      );
+      console.log(`[Classifier] Reason: ${reason}`);
+
+      return classifierResult;
     })
-    .filter(post => post.confidenceScore > 0)       // drop irrelevant posts
-    .sort((a, b) => b.confidenceScore - a.confidenceScore); // best first
+  );
+
+  const kept = scored
+    .filter((post) => post.confidenceScore > CLASSIFIER_THRESHOLD)
+    .sort((a, b) => b.confidenceScore - a.confidenceScore);
+
+  const rejected = scored
+    .filter((post) => post.confidenceScore <= CLASSIFIER_THRESHOLD)
+    .sort((a, b) => b.confidenceScore - a.confidenceScore);
+
+  const averageScore =
+    scored.length > 0
+      ? (
+          scored.reduce((sum, post) => sum + post.confidenceScore, 0) /
+          scored.length
+        ).toFixed(2)
+      : "0.00";
+
+  console.log(
+    `[Classifier] Complete - kept ${kept.length}/${scored.length} posts, rejected ${rejected.length}, average score=${averageScore}, threshold=${CLASSIFIER_THRESHOLD.toFixed(2)}`
+  );
+
+  if (rejected.length > 0) {
+    const topRejected = rejected.slice(0, 5).map((post) => ({
+      score: post.confidenceScore,
+      title: previewTitle(post.title),
+      reason: post.relevanceReason,
+    }));
+
+    console.log(
+      `[Classifier] Highest-scoring rejected posts: ${JSON.stringify(topRejected)}`
+    );
+  }
+
+  return kept;
 }
