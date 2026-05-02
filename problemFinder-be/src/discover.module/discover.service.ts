@@ -1,9 +1,9 @@
 import { classifyPosts } from "../classifier.module/classifier.service";
 import type { ClassifiedPost } from "../classifier.module/classifier.service";
-import { fetchPosts } from "../fetcher.module/fetcher.service";
+import { fetchPosts } from "../fetch.module/fetch.service";
 import { filterPosts } from "../filter.module/filter.service";
 import { parseQuery } from "../queryParser.module/queryParser.service";
-import type { SubredditResult } from "../queryParser.module/queryParser.service"
+import type { SubredditResult } from "../queryParser.module/queryParser.service";
 import {
   getSessionPool,
   getProblemsByCategory,
@@ -15,9 +15,11 @@ import {
 } from "../storage.module/storage.service";
 import { callAI } from "../config/ai.config";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 export interface DiscoveryPipelineResult {
   category: string;
-  matchedKeywords: string[];
+  // matchedKeywords removed
   subreddits: SubredditResult[];
   candidates: ClassifiedPost[];
   pipeline: {
@@ -44,8 +46,16 @@ const DEFAULT_RESULT_COUNT = 3;
 const MAX_RESULT_COUNT = 10;
 const MIN_SESSION_POOL_SIZE = DEFAULT_RESULT_COUNT;
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function hasUsableUrl(url: string | null | undefined): url is string {
   return typeof url === "string" && url.trim().length > 0;
+}
+
+function trimText(value: string, maxLength: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (compact.length <= maxLength) return compact;
+  return `${compact.slice(0, maxLength).trim()}...`;
 }
 
 function toSessionPoolItemsFromStoredProblems(
@@ -65,15 +75,6 @@ function toSessionPoolItemsFromStoredProblems(
       url: problem.url!,
       redditPostId: problem.id,
     }));
-}
-
-function trimText(value: string, maxLength: number): string {
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= maxLength) {
-    return compact;
-  }
-
-  return `${compact.slice(0, maxLength).trim()}...`;
 }
 
 function toSessionPoolItems(posts: ClassifiedPost[]): SessionPoolItem[] {
@@ -96,28 +97,15 @@ function toSessionPoolItems(posts: ClassifiedPost[]): SessionPoolItem[] {
 function looksLikeListRequest(userMessage: string): boolean {
   const normalised = userMessage.toLowerCase();
   return [
-    "give me",
-    "show me",
-    "list",
-    "ideas",
-    "problems",
-    "pain points",
-    "more",
-    "another",
+    "give me", "show me", "list", "ideas",
+    "problems", "pain points", "more", "another",
   ].some((signal) => normalised.includes(signal));
 }
 
 export function extractRequestedCount(userMessage: string): number {
   const explicitCount = userMessage.match(/\b(\d{1,2})\b/);
-
-  if (!looksLikeListRequest(userMessage)) {
-    return 0;
-  }
-
-  if (!explicitCount) {
-    return DEFAULT_RESULT_COUNT;
-  }
-
+  if (!looksLikeListRequest(userMessage)) return 0;
+  if (!explicitCount) return DEFAULT_RESULT_COUNT;
   const parsedCount = Number.parseInt(explicitCount[1], 10);
   return Math.max(1, Math.min(parsedCount, MAX_RESULT_COUNT));
 }
@@ -129,9 +117,10 @@ function getNextPoolIndexes(
   const availableIndexes = sessionPool.items
     .map((_, index) => index)
     .filter((index) => !sessionPool.shownIndexes.includes(index));
-
   return availableIndexes.slice(0, requestedCount);
 }
+
+// ─── Curate ───────────────────────────────────────────────────────────────────
 
 async function cleanSelectedProblems(
   selectedItems: Array<SessionPoolItem & { index: number }>
@@ -145,9 +134,7 @@ async function cleanSelectedProblems(
     url: item.url,
   }));
 
-  if (selectedItems.length === 0) {
-    return fallback;
-  }
+  if (selectedItems.length === 0) return fallback;
 
   const prompt = `
 You clean up discovered problem posts for a product research chatbot.
@@ -198,11 +185,13 @@ ${JSON.stringify(selectedItems)}
       }));
     }
   } catch (_error) {
-    // Fall back to deterministic cleanup if the AI formatter fails.
+    // Fall back to deterministic cleanup if AI formatter fails
   }
 
   return fallback;
 }
+
+// ─── Session Pool ─────────────────────────────────────────────────────────────
 
 export async function buildSessionPool(
   sessionId: string,
@@ -218,7 +207,6 @@ export async function buildSessionPool(
   ) {
     return {
       category: existingPool.category,
-      matchedKeywords: existingPool.matchedKeywords,
       subreddits: existingPool.subreddits,
       candidates: [],
       pipeline: {
@@ -239,7 +227,6 @@ export async function buildSessionPool(
     saveSessionPool(sessionId, {
       query,
       category: parsed.category,
-      matchedKeywords: parsed.matchedKeywords,
       subreddits: parsed.subreddits,
       items: toSessionPoolItemsFromStoredProblems(storedProblems),
       shownIndexes: [],
@@ -248,7 +235,6 @@ export async function buildSessionPool(
 
     return {
       category: parsed.category,
-      matchedKeywords: parsed.matchedKeywords,
       subreddits: parsed.subreddits,
       candidates: [],
       pipeline: {
@@ -272,7 +258,6 @@ export async function buildSessionPool(
   const sessionPool: SessionPoolState = {
     query,
     category: discovery.category,
-    matchedKeywords: discovery.matchedKeywords,
     subreddits: discovery.subreddits,
     items: poolItems,
     shownIndexes: [],
@@ -307,28 +292,21 @@ export async function getCuratedProblemsForSession(
   sessionPool.shownIndexes.push(...nextIndexes);
   sessionPool.lastPresentedIndexes = nextIndexes;
 
-  return {
-    sessionPool,
-    curatedProblems,
-  };
+  return { sessionPool, curatedProblems };
 }
+
+// ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 export async function runDiscoveryPipeline(
   query: string
 ): Promise<DiscoveryPipelineResult> {
   const parsed = await parseQuery(query);
 
-  // Legacy behavior note:
-  // The discovery pipeline used to fetch from Reddit immediately for every
-  // discovery request. We now let buildSessionPool() do a DB-first category
-  // check and only call this function when the requested category is not
-  // already available in storage for reuse.
   const rawPosts = await fetchPosts(parsed.subreddits.map(s => s.name));
 
   if (rawPosts.length === 0) {
     return {
       category: parsed.category,
-      matchedKeywords: parsed.matchedKeywords,
       subreddits: parsed.subreddits,
       candidates: [],
       pipeline: {
@@ -343,12 +321,11 @@ export async function runDiscoveryPipeline(
     };
   }
 
-  const filteredPosts = filterPosts(rawPosts);
+  const filteredPosts = await filterPosts(rawPosts);
 
   if (filteredPosts.length === 0) {
     return {
       category: parsed.category,
-      matchedKeywords: parsed.matchedKeywords,
       subreddits: parsed.subreddits,
       candidates: [],
       pipeline: {
@@ -363,7 +340,7 @@ export async function runDiscoveryPipeline(
     };
   }
 
-  const classifiedPosts = classifyPosts(filteredPosts, parsed);
+  const classifiedPosts = await classifyPosts(filteredPosts, parsed);
   const urlBackedClassifiedPosts = classifiedPosts.filter((post) =>
     hasUsableUrl(post.url)
   );
@@ -371,7 +348,6 @@ export async function runDiscoveryPipeline(
 
   return {
     category: parsed.category,
-    matchedKeywords: parsed.matchedKeywords,
     subreddits: parsed.subreddits,
     candidates: urlBackedClassifiedPosts,
     pipeline: {

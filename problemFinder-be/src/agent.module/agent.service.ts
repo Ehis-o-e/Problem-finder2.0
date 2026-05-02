@@ -111,89 +111,6 @@ function getDisplayedProblems(sessionPool: SessionPoolState) {
 // Reference extraction — replaces ORDINAL_ALIASES
 // ─────────────────────────────────────────────
 
-/**
- * Uses the AI to determine whether the user is referring to one specific
- * displayed problem, and if so, which one from the last displayed list.
- */
-export async function extractDisplayedProblemReference(
-  userMessage: string,
-  sessionPool: SessionPoolState
-): Promise<{
-  displayIndex: number | null;
-  refersToSpecificProblem: boolean;
-}> {
-  const { displayedProblems } = getDisplayedProblems(sessionPool);
-
-  if (displayedProblems.length === 0) {
-    return {
-      displayIndex: null,
-      refersToSpecificProblem: false,
-    };
-  }
-
-  try {
-    const response = await callAI([
-      {
-        role: "system",
-        content: `You resolve which numbered problem a user is referring to from a displayed list.
-
-You will be given:
-- a numbered list of problems the user most recently saw
-- the user's follow-up message
-
-Return ONLY valid JSON in this exact format:
-{"displayIndex": number | null, "refersToSpecificProblem": boolean}
-
-Rules:
-- Use ONLY the displayed list you are given.
-- If the user refers to one specific displayed problem, return its displayIndex and set "refersToSpecificProblem" to true.
-- If the user is clearly trying to talk about one specific displayed problem but you cannot safely identify which one, return {"displayIndex": null, "refersToSpecificProblem": true}.
-- Handle natural language, shorthand, and minor typos.
-- If the user is not referring to one specific displayed problem, return {"displayIndex": null, "refersToSpecificProblem": false}.
-- Do not explain your answer.`,
-      },
-      {
-        role: "user",
-        content: `Displayed problems:
-${JSON.stringify(displayedProblems, null, 2)}
-
-User message:
-${userMessage}`,
-      },
-    ]);
-
-    const cleaned = response.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleaned) as {
-      displayIndex?: number | null;
-      refersToSpecificProblem?: boolean;
-    };
-
-    if (
-      typeof parsed.displayIndex === "number" &&
-      parsed.displayIndex >= 1 &&
-      parsed.displayIndex <= displayedProblems.length
-    ) {
-      return {
-        displayIndex: parsed.displayIndex,
-        refersToSpecificProblem: true,
-      };
-    }
-
-    if (parsed.refersToSpecificProblem === true) {
-      return {
-        displayIndex: null,
-        refersToSpecificProblem: true,
-      };
-    }
-  } catch (_error) {
-    // Fall through to a neutral unresolved state.
-  }
-
-  return {
-    displayIndex: null,
-    refersToSpecificProblem: false,
-  };
-}
 
 // ─────────────────────────────────────────────
 // Context builders
@@ -274,11 +191,7 @@ export function buildCuratedProblemsContext(
 You are helping the user explore real-world problems from a discovered session pool.
 Current topic: ${sessionPool.query}
 Category: ${sessionPool.category}
-Matched keywords: ${
-    sessionPool.matchedKeywords.length > 0
-      ? sessionPool.matchedKeywords.join(", ")
-      : "none"
-  }
+
 
 Present the curated problems clearly. Mention their numbering so the user can refer to "the first one", "the second one", and so on.
 
@@ -331,48 +244,6 @@ ${problem.upvotes} upvotes ${problem.url}`
       : `\n\nReply with a number like "1" or "the second one" to explore one problem, or say "more" to pull in more problems.`;
 
   return `${intro}\n\n${formattedProblems}${outro}`;
-}
-
-/**
-/**
- * Builds context for a single focused problem the user selected.
- * It keeps that one problem as the primary focus and also includes the last
- * displayed list for reference when the user explicitly compares or switches items.
- */
-export function buildFocusedSessionProblemContext(
-  sessionPool: SessionPoolState,
-  displayIndex: number
-): string | null {
-  const { referenceIndexes, displayedProblems } = getDisplayedProblems(sessionPool);
-
-  if (referenceIndexes.length === 0) return null;
-
-  const selectedPoolIndex = referenceIndexes[displayIndex - 1];
-  const selectedItem = sessionPool.items[selectedPoolIndex];
-
-  if (!selectedItem) return null;
-
-  const focusedProblem = toDisplayedProblem(
-    selectedItem,
-    displayIndex - 1,
-    selectedPoolIndex
-  );
-
-  return `
-You are discussing problems from the user's current session pool.
-Current topic: ${sessionPool.query}
-Category: ${sessionPool.category}
-
-The user is currently asking about problem #${displayIndex}. This is your primary focus.
-Answer questions about this problem specifically. Do not swap it out or replace it with another problem from the list.
-You may reference other problems from the list only if the user explicitly asks to compare or go back to them.
-
-FOCUSED problem (what the user is asking about right now):
-${JSON.stringify(focusedProblem, null, 2)}
-
-Full list for conversational context (use only when the user explicitly references another item):
-${JSON.stringify(displayedProblems, null, 2)}
-  `.trim();
 }
 
 export function buildSessionPoolDiscussionContext(

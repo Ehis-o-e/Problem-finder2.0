@@ -41,7 +41,7 @@ export async function callAI(input: string | Message[]): Promise<string> {
         ...(useGroq
           ? {}
           : {
-              "HTTP-Referer": "http://localhost:3000",
+              "HTTP-Referer": "http://localhost:5173",
               "X-Title": "Problem Discovery Tool",
             }),
       },

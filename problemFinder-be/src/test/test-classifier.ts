@@ -1,5 +1,5 @@
 import { parseQuery } from "../queryParser.module/queryParser.service";
-import { fetchPosts } from "../fetcher.module/fetcher.service";
+import { fetchPosts } from "../fetch.module/fetch.service";
 import { filterPosts } from "../filter.module/filter.service";
 import { classifyPosts } from "../classifier.module/classifier.service";
 
@@ -12,7 +12,6 @@ async function test() {
   console.log("Step 1: Parsing query...");
   const parsed = await parseQuery(query);
   console.log(`Category:  ${parsed.category}`);
-  console.log(`Keywords:  ${parsed.matchedKeywords.join(", ")}`);
   console.log("Subreddits found:");
   parsed.subreddits.forEach((subreddit) =>
     console.log(
@@ -26,11 +25,11 @@ async function test() {
   console.log(`Fetched: ${rawPosts.length} posts\n`);
 
   console.log("Step 3: Filtering posts...");
-  const filteredPosts = filterPosts(rawPosts);
+  const filteredPosts = await filterPosts(rawPosts);
   console.log(`After filter: ${filteredPosts.length} posts\n`);
 
   console.log("Step 4: Classifying posts...");
-  const classifiedPosts = classifyPosts(filteredPosts, parsed);
+  const classifiedPosts = await classifyPosts(filteredPosts, parsed);
   console.log(`After classification: ${classifiedPosts.length} posts\n`);
 
   console.log("=== Top Results ===\n");

@@ -1,40 +1,52 @@
-import { signalSet } from "./filter.vocabulary";
-
-export interface RawPost {
-  id: string;
-  title: string;
-  body: string;
-  upvotes: number;
-  commentCount: number;
-  url: string;
-  redditPostId: string;
-  subreddit: string;
-}
+import { RawPost } from "../fetch.module/fetch.service";
+import {
+  embed,
+  findMatches,
+  rankAnchorMatches,
+  AnchorMatch,
+} from "../embedding.module/embedding.service";
+import { EMBEDDING_CONFIG } from "../config/embedding.config";
 
 export interface FilteredPost extends RawPost {
-  matchedSignals: string[];
+  matches: AnchorMatch[];
+  topCategory: string;
+  topScore: number;
 }
 
-export function filterPosts(posts: RawPost[]): FilteredPost[] {
+function formatMatch(match: AnchorMatch): string {
+  return `${match.category}:${match.score.toFixed(3)} "${match.anchor}"`;
+}
+
+export async function filterPosts(posts: RawPost[]): Promise<FilteredPost[]> {
   const results: FilteredPost[] = [];
 
   for (const post of posts) {
-    const normalised = `${post.title} ${post.body}`.toLowerCase().trim();
-    const matchedSignals: string[] = [];
+    const text = `${post.title} ${post.body}`.trim();
+    const postVector = await embed(text);
+    const rankedMatches = rankAnchorMatches(postVector);
+    const matches = findMatches(postVector);
+    const topMatches = rankedMatches.slice(0, 3);
+    const topScore = topMatches[0]?.score ?? 0;
+    const titlePreview =
+      post.title.length > 90 ? `${post.title.slice(0, 90).trim()}...` : post.title;
 
-    for (const signal of signalSet) {
-      if (normalised.includes(signal)) {
-        matchedSignals.push(signal);
-      }
-    }
+    console.log(
+      `[EmbeddingFilter] ${matches.length > 0 ? "PASS" : "FAIL"} score=${topScore.toFixed(3)} threshold=${EMBEDDING_CONFIG.threshold.toFixed(2)} title="${titlePreview}"`
+    );
+    console.log(
+      `[EmbeddingFilter] Top matches: ${topMatches.length > 0 ? topMatches.map(formatMatch).join(" | ") : "none"}`
+    );
 
-    if (matchedSignals.length > 0) {
+    if (matches.length > 0) {
       results.push({
         ...post,
-        matchedSignals,
+        matches,
+        topCategory: matches[0].category,
+        topScore: matches[0].score,
       });
     }
   }
 
+  console.log(`Filter complete - ${results.length}/${posts.length} posts passed`);
   return results;
 }

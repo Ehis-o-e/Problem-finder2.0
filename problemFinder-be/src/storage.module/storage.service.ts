@@ -6,7 +6,12 @@ import type { SubredditResult } from "../queryParser.module/queryParser.service"
 const MAX_AI_SUMMARIES_PER_RUN = 3;
 const FALLBACK_SUMMARY_LENGTH = 220;
 
+type SummaryCategory = "normal" | "deep-struggle" | "venting" | "off-topic";
+
+// ─── Fallback ─────────────────────────────────────────────────────────────────
+
 function buildFallbackSummary(post: ClassifiedPost): {
+  category: SummaryCategory;
   title: string;
   summary: string;
 } {
@@ -18,75 +23,86 @@ function buildFallbackSummary(post: ClassifiedPost): {
       : `${rawSummary.slice(0, FALLBACK_SUMMARY_LENGTH).trim()}...`;
 
   return {
+    category: "normal",
     title: post.title.trim(),
     summary,
   };
 }
 
+// ─── AI Summariser ────────────────────────────────────────────────────────────
+
 async function cleanAndSummariseWithAI(
   post: ClassifiedPost
-): Promise<{ title: string; summary: string }> {
+): Promise<{ category: SummaryCategory; title: string; summary: string }> {
   const sourceSummary = post.body.slice(0, 1000);
 
   const prompt = `
-    You are a problem extraction assistant for a constructive problem-solver tool.
+You are a problem extraction assistant for a product research tool.
+Your job is to turn raw Reddit posts into clean, useful problem descriptions.
 
-First, classify the post into ONE of three categories:
+First classify the post into ONE of four categories:
 
 CATEGORY 1 - NORMAL PROBLEM:
-The author is describing a typical, everyday personal struggle they want help with.
+A personal or professional struggle the author wants help with or is dealing with.
 
-CATEGORY 2 - DEEP STRUGGLE (STILL A PROBLEM):
-The author expresses self-hate, trauma disclosure, or severe emotional pain. This IS a problem, just a deeper one. Frame it compassionately.
+CATEGORY 2 - DEEP STRUGGLE:
+The author expresses trauma, self-hate, or severe emotional pain.
+Still a real and valid problem — frame it with care.
 
-CATEGORY 3 - VENTING ABOUT OTHERS/SOCIETY:
-The author is ranting about other people's behavior or general societal annoyances. Not a personal problem to solve.
+CATEGORY 3 - VENTING:
+The author is frustrated about other people, institutions, or systems.
+This IS a real problem — reframe it as the underlying issue, not the rant.
+Example: ranting about a landlord ignoring repairs -> "Getting landlords to respond to maintenance requests"
 
-Return ONLY a JSON object with this exact structure:
+CATEGORY 4 - OFF TOPIC:
+A showcase, photo, appreciation post, news article, or general discussion
+where no problem is being described at all. Skip these.
 
+Return ONLY a JSON object:
 {
-  "category": "normal" | "deep-struggle" | "venting",
-  "title": "clean problem title under 100 characters",
-  "summary": "2-3 sentence objective description of the issue"
+  "category": "normal" | "deep-struggle" | "venting" | "off-topic",
+  "title": "clear problem title under 100 characters",
+  "summary": "2-3 sentences describing the problem clearly and naturally"
 }
 
-IMPORTANT RULE FOR SUMMARIES:
-Write summaries in THIRD-PERSON OBJECTIVE style. Describe the PROBLEM, not the PERSON.
-- NEVER use: "This person..." "They..." "He..." "She..."
-- NEVER narrate about the individual
-- INSTEAD: State the problem as a neutral, stand-alone issue
+SUMMARY RULES:
+- Write like a smart, empathetic researcher summarising a real problem
+- Describe the situation and what makes it difficult
+- Do not narrate about the person — focus on the problem itself
+- Be concrete and specific, not clinical or robotic
+- For off-topic posts set summary to "Not a problem post"
 
-Examples:
+Good summary examples:
+- "Keeping track of client invoices manually takes hours each week and errors are easy to miss."
+- "Getting a consistent sleep schedule is hard when work hours keep shifting unpredictably."
+- "Landlords in many cities ignore maintenance requests for months with no legal consequence."
+- "Transitioning from freelance to full-time employment means losing tax deductions with no clear guidance."
 
-WRONG: "This person struggles with impulsive spending. They want to build better habits."
-RIGHT: "Difficulty controlling impulse spending and establishing consistent savings habits. Previous attempts at budgeting have not stuck."
-
-WRONG: "This person is experiencing intense feelings of self-loathing. They are caught in a cycle of harsh self-criticism."
-RIGHT: "Persistent negative self-perception and harsh internal criticism. A pattern of self-devaluing thoughts that feels difficult to break."
-
-WRONG: "This person is frustrated that their roommate doesn't wash dishes. They're seeking a diplomatic approach."
-RIGHT: "Ongoing tension with a roommate over shared cleaning responsibilities. Uncertainty about how to address the issue without escalating conflict."
-
-WRONG: "This person is carrying pain from childhood abuse and is trying to heal."
-RIGHT: "Unresolved trauma from childhood experiences affecting present-day wellbeing. Difficulty knowing where or how to begin the healing process."
-
-If "venting":
-{
-  "category": "venting",
-  "title": "brief description of rant topic",
-  "summary": "Venting about external behavior, not a personal problem seeking resolution."
-}
+Bad summary examples:
+- "Persistent negative self-perception and harsh internal criticism." (too clinical)
+- "This person struggles with invoicing." (narrating about the person)
+- "Difficulty controlling impulse spending." (too stiff, reads like a diagnosis)
 
 Title: ${post.title}
-Summary: ${sourceSummary}
-`.trim();
+Body: ${sourceSummary}
+  `.trim();
 
   try {
     const response = await callAI(prompt);
     const cleaned = response.replace(/```json|```/g, "").trim();
-    const parsed = JSON.parse(cleaned);
+    const parsed = JSON.parse(cleaned) as {
+      category?: SummaryCategory;
+      title?: string;
+      summary?: string;
+    };
 
     return {
+      category:
+        parsed.category === "deep-struggle" ||
+        parsed.category === "venting" ||
+        parsed.category === "off-topic"
+          ? parsed.category
+          : "normal",
       title: parsed.title || post.title,
       summary: parsed.summary || buildFallbackSummary(post).summary,
     };
@@ -94,6 +110,8 @@ Summary: ${sourceSummary}
     return buildFallbackSummary(post);
   }
 }
+
+// ─── Duplicate Check ──────────────────────────────────────────────────────────
 
 async function isDuplicate(post: ClassifiedPost): Promise<boolean> {
   const existingById = await prisma.problem.findUnique({
@@ -149,30 +167,28 @@ function jaccardSimilarity(a: string, b: string): number {
   return intersection.size / union.size;
 }
 
-export async function purgeExpiredProblems(): Promise<void> {
-  const deleted = await prisma.problem.deleteMany({
-    where: {
-      expiresAt: { lt: new Date() },
-    },
-  });
-
-  console.log(`Purged ${deleted.count} expired problems`);
-}
+// ─── Save ─────────────────────────────────────────────────────────────────────
 
 async function savePost(
   post: ClassifiedPost,
-  options?: {
-    useAI?: boolean;
-  }
-): Promise<boolean> {
+  options?: { useAI?: boolean }
+): Promise<{
+  saved: boolean;
+  skippedReason?: "off-topic" | "invalid";
+}> {
   if (!post.url || post.url.trim().length === 0) {
-    return false;
+    return { saved: false, skippedReason: "invalid" };
   }
 
-  const { title, summary } =
+  const { category, title, summary } =
     options?.useAI === false
       ? buildFallbackSummary(post)
       : await cleanAndSummariseWithAI(post);
+
+  if (category === "off-topic") {
+    console.log(`Skipped off-topic post: ${post.title}`);
+    return { saved: false, skippedReason: "off-topic" };
+  }
 
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30);
@@ -195,7 +211,7 @@ async function savePost(
     });
 
     console.log(`Saved: ${title}`);
-    return true;
+    return { saved: true };
   } catch (error) {
     console.error("Skipping malformed or invalid problem record", {
       redditPostId: post.redditPostId,
@@ -203,9 +219,23 @@ async function savePost(
       url: post.url,
       error,
     });
-    return false;
+    return { saved: false, skippedReason: "invalid" };
   }
 }
+
+// ─── Purge ────────────────────────────────────────────────────────────────────
+
+export async function purgeExpiredProblems(): Promise<void> {
+  const deleted = await prisma.problem.deleteMany({
+    where: {
+      expiresAt: { lt: new Date() },
+    },
+  });
+
+  console.log(`Purged ${deleted.count} expired problems`);
+}
+
+// ─── Store ────────────────────────────────────────────────────────────────────
 
 export async function storePosts(posts: ClassifiedPost[]): Promise<{
   saved: number;
@@ -220,10 +250,13 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
 
   let saved = 0;
   let duplicates = 0;
-  let skipped = 0;
+  let skippedInvalid = 0;
+  let skippedOffTopic = 0;
   let aiSummariesUsed = 0;
 
-  const prioritisedPosts = [...urlBackedPosts].sort((a, b) => b.upvotes - a.upvotes);
+  const prioritisedPosts = [...urlBackedPosts].sort(
+    (a, b) => b.upvotes - a.upvotes
+  );
 
   for (const post of prioritisedPosts) {
     const duplicate = await isDuplicate(post);
@@ -234,10 +267,14 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
     }
 
     const useAI = aiSummariesUsed < MAX_AI_SUMMARIES_PER_RUN;
-    const didSave = await savePost(post, { useAI });
+    const saveResult = await savePost(post, { useAI });
 
-    if (!didSave) {
-      skipped++;
+    if (!saveResult.saved) {
+      if (saveResult.skippedReason === "off-topic") {
+        skippedOffTopic++;
+      } else {
+        skippedInvalid++;
+      }
       continue;
     }
 
@@ -248,8 +285,14 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
     saved++;
   }
 
-  if (skipped > 0) {
-    console.warn(`Skipped ${skipped} malformed or invalid problem record(s) during storage`);
+  if (skippedOffTopic > 0) {
+    console.warn(`Skipped ${skippedOffTopic} off-topic post(s) during storage`);
+  }
+
+  if (skippedInvalid > 0) {
+    console.warn(
+      `Skipped ${skippedInvalid} malformed or invalid problem record(s) during storage`
+    );
   }
 
   return {
@@ -258,6 +301,8 @@ export async function storePosts(posts: ClassifiedPost[]): Promise<{
     total: urlBackedPosts.length,
   };
 }
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface StoredProblem {
   id: string;
@@ -284,12 +329,13 @@ export interface SessionPoolItem {
 export interface SessionPoolState {
   query: string;
   category: string;
-  matchedKeywords: string[];
   subreddits: SubredditResult[];
   items: SessionPoolItem[];
   shownIndexes: number[];
   lastPresentedIndexes: number[];
 }
+
+// ─── Session Pool ─────────────────────────────────────────────────────────────
 
 const SESSION_POOLS = new Map<string, SessionPoolState>();
 
@@ -305,6 +351,8 @@ export function getSessionPool(
 ): SessionPoolState | undefined {
   return SESSION_POOLS.get(sessionId);
 }
+
+// ─── Query ────────────────────────────────────────────────────────────────────
 
 export async function getProblemsByCategory(
   category: string,

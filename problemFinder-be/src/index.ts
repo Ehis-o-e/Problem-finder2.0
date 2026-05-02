@@ -1,17 +1,21 @@
 import app from './app';
 import dotenv from 'dotenv';
 import prisma from './config/database.config';
+import { initEmbeddings } from './embedding.module/embedding.service';
 
 dotenv.config();
 
 const PORT = process.env.PORT || 5050;
 
-// Initialize database connection
 async function startServer() {
     try {
         // Test database connection
         await prisma.$connect();
         console.log('✅ Database connected successfully');
+
+        // Load embedding model and cache anchor vectors
+        await initEmbeddings();
+        console.log('✅ Embeddings initialised');
 
         // Start server
         app.listen(PORT, () => {
@@ -20,12 +24,11 @@ async function startServer() {
             console.log(`📝 URL: http://localhost:${PORT}`);
         });
     } catch (error) {
-        console.error('❌ Failed to connect to database:', error);
+        console.error('❌ Failed to start server:', error);
         process.exit(1);
     }
 }
 
-// Graceful shutdown
 process.on('SIGINT', async () => {
     console.log('\n🛑 Shutting down gracefully...');
     await prisma.$disconnect();

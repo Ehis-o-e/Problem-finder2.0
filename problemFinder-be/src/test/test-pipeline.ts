@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 import { parseQuery } from "../queryParser.module/queryParser.service";
-import { fetchPosts } from "../fetcher.module/fetcher.service";
+import { fetchPosts } from "../fetch.module/fetch.service";
 import { filterPosts } from "../filter.module/filter.service";
 import { classifyPosts } from "../classifier.module/classifier.service";
 import { storePosts } from "../storage.module/storage.service";
@@ -13,7 +13,6 @@ async function test(query: string) {
   console.log("Step 1: Parsing query...");
   const parsed = await parseQuery(query);
   console.log(`Category: ${parsed.category}`);
-  console.log(`Matched keywords: ${parsed.matchedKeywords.join(", ")}`);
   console.log(
     `Subreddits: ${parsed.subreddits.map((subreddit) => subreddit.name).join(", ")}\n`
   );
@@ -25,7 +24,7 @@ async function test(query: string) {
   console.log(`Raw posts fetched: ${rawPosts.length}\n`);
 
   console.log("Step 3: Filtering posts...");
-  const filteredPosts = filterPosts(rawPosts);
+  const filteredPosts = await filterPosts(rawPosts);
   console.log(`Posts after filter: ${filteredPosts.length}`);
   console.log(`Discarded: ${rawPosts.length - filteredPosts.length}\n`);
 
@@ -33,12 +32,16 @@ async function test(query: string) {
   filteredPosts.slice(0, 3).forEach((post) => {
     console.log(`\nTitle: ${post.title}`);
     console.log(`Upvotes: ${post.upvotes}`);
-    console.log(`Signals: ${post.matchedSignals.join(", ")}`);
+    console.log(`Top category: ${post.topCategory}`);
+    console.log(`Top score: ${post.topScore.toFixed(3)}`);
+    console.log(
+      `Matches: ${post.matches.map((match) => `${match.category}:${match.score.toFixed(3)}`).join(", ")}`
+    );
     console.log(`URL: ${post.url}`);
   });
 
   console.log("\nStep 4: Classifying posts...");
-  const classifiedPosts = classifyPosts(filteredPosts, parsed);
+  const classifiedPosts = await classifyPosts(filteredPosts, parsed);
 
   console.log("Sample of classified posts:");
   classifiedPosts.slice(0, 3).forEach((post) => {

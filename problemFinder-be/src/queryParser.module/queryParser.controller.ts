@@ -4,7 +4,7 @@ import { parseQuery } from "./queryParser.service";
 export const queryParserController = async (req: Request, res: Response) => {
   try {
     const { query } = req.body;
-    const result = parseQuery(query);
+    const result = await parseQuery(query);
     return res.status(200).json({
       success: true,
       data: result,

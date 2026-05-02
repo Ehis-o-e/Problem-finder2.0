@@ -21,7 +21,6 @@ export const discoverController = async (req: Request, res: Response) => {
           : "Discovery pipeline completed",
       data: {
         category: result.category,
-        matchedKeywords: result.matchedKeywords,
         subreddits: result.subreddits,
         pipeline: result.pipeline,
         problems: result.problems,

@@ -1,0 +1,120 @@
+export const EMBEDDING_CONFIG = {
+  model: "Xenova/all-MiniLM-L6-v2",
+  threshold: 0.2,
+
+  anchorCategories: {
+    frustration: [
+      "This has been frustrating me for weeks",
+      "I'm so done with this",
+      "This is driving me crazy",
+      "I can't take this anymore",
+      "I'm exhausted dealing with this",
+      "This keeps causing headaches for everyone involved",
+      "This creates constant frustration in day to day work",
+      "People are tired of dealing with this over and over",
+      "Every time I try this it fails and I lose my mind",
+      "I have been patient but this is beyond acceptable",
+      "Nothing about this process makes sense",
+      "I dread having to deal with this every single time",
+    ],
+
+    seeking_solution: [
+      "Does anyone know how to fix this?",
+      "I've tried everything and nothing works",
+      "I'm stuck and don't know what to do",
+      "How do I solve this problem?",
+      "Can someone point me in the right direction?",
+      "We need a better way to handle this",
+      "I am looking for a reliable solution to this problem",
+      "There has to be an easier way to do this",
+      "Has anyone found a way around this?",
+      "What is the best approach for dealing with this?",
+      "I need guidance on how to move forward",
+      "I keep hitting a wall and need a way through",
+      "Looking for anyone who has solved this before",
+    ],
+
+    gap_in_market: [
+      "I wish there was a tool that did this",
+      "Nobody talks about this problem",
+      "Why doesn't this exist yet?",
+      "There should be a better way to do this",
+      "I can't find anything that solves this",
+      "No product seems built for this use case",
+      "Current tools do not cover this need",
+      "There is a gap in the market for this workflow",
+      "Every solution I find is missing this one thing",
+      "The market has completely ignored this problem",
+      "I would pay for something that handled this properly",
+      "No one has built the right tool for this yet",
+      "Existing products are close but never quite right",
+    ],
+
+    pain_point: [
+      "This is such a waste of time",
+      "This costs too much for what it does",
+      "I keep running into this same problem",
+      "This broke again and I don't know why",
+      "I've lost so much time to this",
+      "This process is slow and inefficient",
+      "This is a recurring operational bottleneck",
+      "This creates unnecessary manual work",
+      "The amount of effort this takes is not worth it",
+      "This slows everything down every single time",
+      "I spend more time on this than on actual work",
+      "This should take five minutes but takes an hour",
+      "The overhead here is killing our productivity",
+    ],
+
+    regret_or_mistake: [
+      "I wish I had known this earlier",
+      "I made a bad decision and now I'm stuck",
+      "I should have done this differently",
+      "I wasted money on the wrong thing",
+      "Learned this the hard way",
+      "This approach turned out to be the wrong fit",
+      "We made a choice that created more problems later",
+      "If I could go back I would have done this differently",
+      "This seemed like a good idea at the time",
+      "We underestimated how much this would cost us",
+      "Nobody warned us this would happen",
+      "The decision looked fine on paper but failed in practice",
+    ],
+
+    workflow_breakdown: [
+      "This workflow keeps breaking at the same step",
+      "The handoff between teams is messy and unreliable",
+      "This process depends on too many manual steps",
+      "The current system does not fit how people actually work",
+      "This task takes too many tools to complete",
+      "The process is hard to track from start to finish",
+      "Important information gets lost during the workflow",
+      "Every step in this process requires a different system",
+      "The workflow falls apart when one person is unavailable",
+      "Nobody knows who is responsible for which part",
+      "Steps get skipped because the process is too complicated",
+      "We keep redoing work because handoffs are unclear",
+    ],
+
+    missing_capability: [
+      "The tool does not support a basic feature we need",
+      "There is no easy way to do this with the current software",
+      "The platform is missing a key capability",
+      "We keep hitting limitations in the existing product",
+      "The current solution does not handle this scenario",
+      "This use case is not supported out of the box",
+      "The software falls short for real world needs",
+      "We had to build a workaround because the tool could not do it",
+      "The feature exists but it does not work the way we need",
+      "We were promised this capability but it never shipped",
+      "The API does not expose what we need to build on top of it",
+      "Basic functionality that every user needs is just missing",
+    ],
+  },
+} as const;
+
+export const FLAT_ANCHORS: { text: string; category: string }[] = Object.entries(
+  EMBEDDING_CONFIG.anchorCategories
+).flatMap(([category, anchors]) =>
+  anchors.map((text) => ({ text, category }))
+);
