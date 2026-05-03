@@ -58,6 +58,10 @@ function trimText(value: string, maxLength: number): string {
   return `${compact.slice(0, maxLength).trim()}...`;
 }
 
+function formatDurationMs(startTime: number): string {
+  return `${Date.now() - startTime}ms`;
+}
+
 function toSessionPoolItemsFromStoredProblems(
   problems: StoredProblem[]
 ): SessionPoolItem[] {
@@ -300,11 +304,28 @@ export async function getCuratedProblemsForSession(
 export async function runDiscoveryPipeline(
   query: string
 ): Promise<DiscoveryPipelineResult> {
-  const parsed = await parseQuery(query);
+  const pipelineStart = Date.now();
+  console.log(`[PipelineTiming] Starting discovery pipeline for query="${query}"`);
 
+  const parseStart = Date.now();
+  const parsed = await parseQuery(query);
+  console.log(`[PipelineTiming] Query parsing took ${formatDurationMs(parseStart)}`);
+
+  const fetchStart = Date.now();
   const rawPosts = await fetchPosts(parsed.subreddits.map(s => s.name));
+  console.log(
+    `[PipelineTiming] Fetching took ${formatDurationMs(fetchStart)} (${rawPosts.length} raw posts)`
+  );
 
   if (rawPosts.length === 0) {
+    const fallbackLoadStart = Date.now();
+    const fallbackProblems = await getProblemsByCategory(parsed.category, 10);
+    console.log(
+      `[PipelineTiming] Fallback DB load took ${formatDurationMs(fallbackLoadStart)} (${fallbackProblems.length} problems)`
+    );
+    console.log(
+      `[PipelineTiming] Discovery pipeline completed in ${formatDurationMs(pipelineStart)}`
+    );
     return {
       category: parsed.category,
       subreddits: parsed.subreddits,
@@ -317,13 +338,25 @@ export async function runDiscoveryPipeline(
         duplicates: 0,
         total: 0,
       },
-      problems: await getProblemsByCategory(parsed.category, 10),
+      problems: fallbackProblems,
     };
   }
 
+  const filterStart = Date.now();
   const filteredPosts = await filterPosts(rawPosts);
+  console.log(
+    `[PipelineTiming] Filtering took ${formatDurationMs(filterStart)} (${filteredPosts.length}/${rawPosts.length} posts passed)`
+  );
 
   if (filteredPosts.length === 0) {
+    const fallbackLoadStart = Date.now();
+    const fallbackProblems = await getProblemsByCategory(parsed.category, 10);
+    console.log(
+      `[PipelineTiming] Fallback DB load took ${formatDurationMs(fallbackLoadStart)} (${fallbackProblems.length} problems)`
+    );
+    console.log(
+      `[PipelineTiming] Discovery pipeline completed in ${formatDurationMs(pipelineStart)}`
+    );
     return {
       category: parsed.category,
       subreddits: parsed.subreddits,
@@ -336,15 +369,34 @@ export async function runDiscoveryPipeline(
         duplicates: 0,
         total: 0,
       },
-      problems: await getProblemsByCategory(parsed.category, 10),
+      problems: fallbackProblems,
     };
   }
 
+  const classifyStart = Date.now();
   const classifiedPosts = await classifyPosts(filteredPosts, parsed);
+  console.log(
+    `[PipelineTiming] Classification took ${formatDurationMs(classifyStart)} (${classifiedPosts.length}/${filteredPosts.length} posts kept)`
+  );
+
   const urlBackedClassifiedPosts = classifiedPosts.filter((post) =>
     hasUsableUrl(post.url)
   );
+
+  const storageStart = Date.now();
   const { saved, duplicates, total } = await storePosts(urlBackedClassifiedPosts);
+  console.log(
+    `[PipelineTiming] Storage took ${formatDurationMs(storageStart)} (saved=${saved}, duplicates=${duplicates}, total=${total})`
+  );
+
+  const finalLoadStart = Date.now();
+  const problems = await getProblemsByCategory(parsed.category, 10);
+  console.log(
+    `[PipelineTiming] Final DB load took ${formatDurationMs(finalLoadStart)} (${problems.length} problems)`
+  );
+  console.log(
+    `[PipelineTiming] Discovery pipeline completed in ${formatDurationMs(pipelineStart)}`
+  );
 
   return {
     category: parsed.category,
@@ -358,6 +410,6 @@ export async function runDiscoveryPipeline(
       duplicates,
       total,
     },
-    problems: await getProblemsByCategory(parsed.category, 10),
+    problems,
   };
 }

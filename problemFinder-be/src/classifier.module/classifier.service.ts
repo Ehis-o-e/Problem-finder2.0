@@ -18,11 +18,9 @@ async function scorePost(
   post: FilteredPost,
   topicVector: number[]
 ): Promise<{ score: number; reason: string }> {
-  const postText = `${post.title} ${post.body}`.trim();
-  const postVector = await embed(postText);
 
   const score = parseFloat(
-    cosineSimilarity(postVector, topicVector).toFixed(2)
+    cosineSimilarity(post.vector, topicVector).toFixed(2)
   );
 
   const reason =
