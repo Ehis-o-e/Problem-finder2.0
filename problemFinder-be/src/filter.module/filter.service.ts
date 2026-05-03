@@ -11,6 +11,7 @@ export interface FilteredPost extends RawPost {
   matches: AnchorMatch[];
   topCategory: string;
   topScore: number;
+  vector: number[];
 }
 
 function formatMatch(match: AnchorMatch): string {
@@ -52,6 +53,7 @@ export async function filterPosts(posts: RawPost[]): Promise<FilteredPost[]> {
         matches,
         topCategory: matches[0].category,
         topScore: matches[0].score,
+        vector: postVector,
       });
     }
   }
