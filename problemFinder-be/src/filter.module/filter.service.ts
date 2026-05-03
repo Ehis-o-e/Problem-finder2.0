@@ -20,21 +20,30 @@ function formatMatch(match: AnchorMatch): string {
 export async function filterPosts(posts: RawPost[]): Promise<FilteredPost[]> {
   const results: FilteredPost[] = [];
 
-  for (const post of posts) {
-    const text = `${post.title} ${post.body}`.trim();
-    const postVector = await embed(text);
+  // Batch embed all posts in parallel instead of one-by-one
+  const texts = posts.map((post) => `${post.title} ${post.body}`.trim());
+  const postVectors = await Promise.all(texts.map((text) => embed(text)));
+
+  for (let i = 0; i < posts.length; i++) {
+    const post = posts[i];
+    const postVector = postVectors[i];
+
     const rankedMatches = rankAnchorMatches(postVector);
     const matches = findMatches(postVector);
     const topMatches = rankedMatches.slice(0, 3);
     const topScore = topMatches[0]?.score ?? 0;
     const titlePreview =
-      post.title.length > 90 ? `${post.title.slice(0, 90).trim()}...` : post.title;
+      post.title.length > 90
+        ? `${post.title.slice(0, 90).trim()}...`
+        : post.title;
 
     console.log(
       `[EmbeddingFilter] ${matches.length > 0 ? "PASS" : "FAIL"} score=${topScore.toFixed(3)} threshold=${EMBEDDING_CONFIG.threshold.toFixed(2)} title="${titlePreview}"`
     );
     console.log(
-      `[EmbeddingFilter] Top matches: ${topMatches.length > 0 ? topMatches.map(formatMatch).join(" | ") : "none"}`
+      `[EmbeddingFilter] Top matches: ${
+        topMatches.length > 0 ? topMatches.map(formatMatch).join(" | ") : "none"
+      }`
     );
 
     if (matches.length > 0) {

@@ -251,9 +251,9 @@ export async function buildSessionPool(
 
   const discovery = await runDiscoveryPipeline(query);
   const poolItems =
-    discovery.problems.length > 0
-      ? toSessionPoolItemsFromStoredProblems(discovery.problems)
-      : toSessionPoolItems(discovery.candidates);
+    discovery.candidates.length > 0
+      ? toSessionPoolItems(discovery.candidates)
+      : toSessionPoolItemsFromStoredProblems(discovery.problems);
 
   const sessionPool: SessionPoolState = {
     query,

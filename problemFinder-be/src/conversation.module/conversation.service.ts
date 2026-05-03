@@ -10,12 +10,13 @@ import { getSessionPool } from "../storage.module/storage.service";
 import type { StoredProblem, SessionPoolItem } from "../storage.module/storage.service";
 
 type ConversationIntent = "discovery" | "conversation" | "clarification";
+type MoreIntent = "wants_more" | "out_of_range" | null;
 
 interface IntentResult {
   intent: ConversationIntent;
   reason: string;
   focusedProblem: SessionPoolItem | null;
-  askForMore: boolean;
+  moreIntent: MoreIntent;
 }
 
 interface ConversationResult {
@@ -59,7 +60,7 @@ Return ONLY valid JSON in this exact shape:
 Rules:
 - Fix spelling, grammar, shorthand, and slang.
 - Preserve the full meaning and intent of the message.
-- Do not remove any words — only fix how they are written.
+- Do not remove any words - only fix how they are written.
 - Keep action and intent words like "give me", "show me", "find", "looking for".
 - Preserve selection-style requests such as "1", "the first one", or "more" exactly as they are.
 
@@ -110,7 +111,7 @@ Message:
 ${normalizedMessage}
   `.trim();
 
-    try {
+  try {
     const response = await callAI(prompt);
     const cleaned = response.replace(/```json|```/g, "").trim();
     const parsed = JSON.parse(cleaned) as { topic?: string };
@@ -122,27 +123,21 @@ ${normalizedMessage}
     // fall through to fallback
   }
 
-  // fallback — return the normalized message as-is
   return normalizedMessage;
 }
 
-
-function buildIntentFallback(
-  hasProblemContext: boolean
-): IntentResult {
-
-  const intent = hasProblemContext  ? "conversation" : "discovery";
+function buildIntentFallback(hasProblemContext: boolean): IntentResult {
+  const intent = hasProblemContext ? "conversation" : "discovery";
 
   return {
     intent,
     reason: "Fallback keyword routing used because AI intent parsing failed.",
     focusedProblem: null,
-    askForMore: false,
+    moreIntent: null,
   };
 }
 
-async function detectIntent(sessionId: string,userMessage: string): Promise<IntentResult> {
-
+async function detectIntent(sessionId: string, userMessage: string): Promise<IntentResult> {
   const history = await agentService.getHistory(sessionId);
   const session = await agentService.getSessionWithHistory(sessionId);
   const sessionPool = getSessionPool(sessionId);
@@ -156,8 +151,10 @@ async function detectIntent(sessionId: string,userMessage: string): Promise<Inte
     Boolean(sessionPool && sessionPool.items.length > 0) ||
     history.length > 0;
 
-  const recentHistory = history.slice(-20).map((message) => 
-    `${message.role}: ${message.content}`).join("\n");
+  const recentHistory = history
+    .slice(-20)
+    .map((message) => `${message.role}: ${message.content}`)
+    .join("\n");
 
   const displayedProblems = sessionPool
     ? sessionPool.lastPresentedIndexes.map((index, displayIndex) => ({
@@ -170,33 +167,48 @@ async function detectIntent(sessionId: string,userMessage: string): Promise<Inte
 You classify incoming chat messages for a problem-discovery backend.
 
 Choose exactly one intent:
-- "discovery": the user is asking the system to find or surface problem areas, pain points, or real-world problems for a topic.
-- "conversation": the user is continuing an existing discussion, asking follow-up questions, asking for analysis, comparison, prioritisation, or refinement.
-- "clarification":ONLY use this when the message is a vague pronoun or reference with no topic
-  and no clear link to the displayed list — e.g. "that one", "tell me more", "what about it".
-  Any message containing a recognizable topic or domain should NEVER be "clarification".
-  When in doubt between "discovery" and "clarification", always choose "discovery".
-
-  IMPORTANT RULES:
-- "give me more", "show me more", "more problems", "gimme more" — these are ALWAYS "conversation" because the user wants more from the current session, not a new discovery.
-- Only use "discovery" when the user is clearly asking about a NEW topic they haven't explored yet.
-- If there is an active session pool and the user asks for "more", that is ALWAYS "conversation".
-
-If the intent is "conversation" and the user references a specific problem by number (e.g. "explain the 4th one", "tell me about problem 2"):
-- If that number exists in the displayed list, set "focusedProblem" to that problem's full object from the list.
-- If that number does NOT exist in the displayed list, set "askForMore" to true.
+- "discovery": the user wants to find problems for a NEW topic entirely.
+- "conversation": the user is continuing discussion about the current topic - asking for more problems, focusing on a specific displayed problem, or asking for analysis.
+- "clarification": the message is too vague to route confidently and context is insufficient.
 
 Return ONLY valid JSON in this exact format:
 {
   "intent": "discovery" | "conversation" | "clarification",
   "reason": "short explanation",
   "focusedProblem": { problem object from displayed list } | null,
-  "askForMore": true | false
+  "moreIntent": "wants_more" | "out_of_range" | null
 }
 
-Session has explicit problem context: ${session.problemId ? "yes" : "no"}
-Session has discovered session pool: ${sessionPool ? "yes" : "no"}
-Session already has history: ${history.length > 0 ? "yes" : "no"}
+RULES:
+- If there is an active session pool and the user message can reasonably refer to the current topic, prefer "conversation" over "clarification".
+- When in doubt between "conversation" and "clarification", choose "conversation".
+- If the user says "more", "give me more", "show me more", or asks for additional problems without naming a new topic:
+  -> intent: "conversation", moreIntent: "wants_more", focusedProblem: null
+- If the user references a problem number that exists in the currently displayed list:
+  -> intent: "conversation", moreIntent: null, focusedProblem: <that problem object>
+- If the user references a problem number that does NOT exist in the currently displayed list:
+  -> intent: "conversation", moreIntent: "out_of_range", focusedProblem: null
+- If the user clearly names a new topic or switches category:
+  -> intent: "discovery", moreIntent: null, focusedProblem: null
+- Use "clarification" only when there is genuinely not enough context to pick any of the above.
+- Use "discovery" only when the user explicitly asks for problems, issues, or pain points in a different named topic or category than the current one.
+
+Examples:
+- "more" -> { "intent": "conversation", "moreIntent": "wants_more", "focusedProblem": null }
+- "give me more" -> { "intent": "conversation", "moreIntent": "wants_more", "focusedProblem": null }
+- "the second one" -> { "intent": "conversation", "moreIntent": null, "focusedProblem": <problem 2 from displayed list> }
+- "problem 5" when only 3 problems are currently displayed -> { "intent": "conversation", "moreIntent": "out_of_range", "focusedProblem": null }
+- "find problems in logistics" -> { "intent": "discovery", "moreIntent": null, "focusedProblem": null }
+- "what about another topic" -> { "intent": "clarification", "moreIntent": null, "focusedProblem": null }
+
+Session context:
+- Has active problem context: ${session.problemId ? "yes" : "no"}
+- Has session pool: ${sessionPool ? "yes" : "no"}
+- Session pool total items: ${sessionPool?.items.length ?? 0}
+- Problems already shown: ${sessionPool?.shownIndexes.length ?? 0}
+- Problems in last displayed batch: ${sessionPool?.lastPresentedIndexes.length ?? 0}
+- Has conversation history: ${history.length > 0 ? "yes" : "no"}
+
 Recent history:
 ${recentHistory || "none"}
 
@@ -221,14 +233,18 @@ ${userMessage}
         intent: parsed.intent,
         reason: parsed.reason ?? "AI intent routing completed.",
         focusedProblem: parsed.focusedProblem ?? null,
-        askForMore: parsed.askForMore ?? false,
+        moreIntent:
+          parsed.moreIntent === "wants_more" ||
+          parsed.moreIntent === "out_of_range"
+            ? parsed.moreIntent
+            : null,
       };
     }
   } catch (_error) {
     // Intentionally fall through to deterministic fallback.
   }
 
-  return buildIntentFallback( hasProblemContext);
+  return buildIntentFallback(hasProblemContext);
 }
 
 export async function createSession(
@@ -275,8 +291,8 @@ export async function handleConversation(
   }
 
   if (intentResult.intent === "clarification") {
-    const response = 
-      `I'm not sure what you're referring to. Could you be more specific?` + 
+    const response =
+      `I'm not sure what you're referring to. Could you be more specific?` +
       `For example, you can say "tell me about problem 2" or ask about a topic you'd like me to find problems for.`;
 
     await agentService.saveMessage(sessionId, "user", userMessage);
@@ -289,11 +305,18 @@ export async function handleConversation(
     };
   }
 
-  if (intentResult.askForMore) {
-    const listSize = existingPool?.lastPresentedIndexes.length ?? 0;
-    const response = listSize > 0
-      ? `I only have problems 1–${listSize} in the current list. Would you like to pick one of those, or say "more" and I'll find you new problems?`
-      : `I don't have any problems loaded yet. Would you like me to find some?`;
+  if (intentResult.moreIntent === "out_of_range") {
+    const displayedCount = existingPool?.lastPresentedIndexes.length ?? 0;
+    const remainingCount = existingPool
+      ? existingPool.items.length - existingPool.shownIndexes.length
+      : 0;
+
+    const response =
+      displayedCount > 0
+        ? remainingCount > 0
+          ? `I've only shown ${displayedCount} problem${displayedCount === 1 ? "" : "s"} so far. If you want, I can pull more from this same topic.`
+          : `I've only shown ${displayedCount} problem${displayedCount === 1 ? "" : "s"} so far, and that's all I currently have in this list. Would you like to explore a different topic?`
+        : `I don't have any problems loaded yet. Would you like me to find some?`;
 
     await agentService.saveMessage(sessionId, "user", userMessage);
     await agentService.saveMessage(sessionId, "assistant", response);
@@ -303,16 +326,14 @@ export async function handleConversation(
 
   if (intentResult.focusedProblem && existingPool) {
     const context = `
-      You are discussing problems from the user's current session pool.
-      Current topic: ${existingPool.query}
-      Category: ${existingPool.category}
+${agentService.buildSessionPoolDiscussionContext(existingPool)}
 
-      The user is asking about this specific problem. Stay focused on it.
-      Only reference other problems if the user explicitly asks to compare or switch.
+The user is asking about this specific problem. Stay focused on it.
+Only reference other problems if the user explicitly asks to compare or switch.
 
-      Problem:
-      ${JSON.stringify(intentResult.focusedProblem, null, 2)}
-          `.trim();
+Focused problem:
+${JSON.stringify(intentResult.focusedProblem, null, 2)}
+    `.trim();
 
     const response = await agentService.chat(sessionId, userMessage, {
       contextOverride: context,
@@ -322,8 +343,28 @@ export async function handleConversation(
     return { intent: intentResult.intent, reason: intentResult.reason, response };
   }
 
-const requestedCount = extractRequestedCount(normalizedUserMessage);
-  if (existingPool && requestedCount > 0) {
+  const requestedCount = extractRequestedCount(normalizedUserMessage);
+  if (
+    existingPool &&
+    (intentResult.moreIntent === "wants_more" || requestedCount > 0)
+  ) {
+    const remainingCount = existingPool.items.length - existingPool.shownIndexes.length;
+
+    if (remainingCount <= 0) {
+      const response =
+        `I don't have any more problems left in this current list for ${existingPool.query}. ` +
+        `Would you like more from this same category, or do you want to explore a different topic?`;
+
+      await agentService.saveMessage(sessionId, "user", userMessage);
+      await agentService.saveMessage(sessionId, "assistant", response);
+
+      return {
+        intent: intentResult.intent,
+        reason: intentResult.reason,
+        response,
+      };
+    }
+
     const { sessionPool, curatedProblems } = await getCuratedProblemsForSession(
       sessionId,
       normalizedUserMessage

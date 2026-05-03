@@ -9,6 +9,7 @@ import queryParserRouter from "./queryParser.module/queryParser.route";
 import discoverRouter from "./discover.module/discover.route";
 import aiChatBotRouter from "./agent.module/agent.route";
 import conversationRouter from "./conversation.module/conversation.route";
+import { createRateLimiter } from "./middleware/rate-limit.middleware";
 
 dotenv.config();
 
@@ -16,6 +17,32 @@ dotenv.config();
 console.log("CORS ORIGIN:", process.env.CORS_ORIGIN);
 
 const app = express();
+
+const parseEnvNumber = (value: string | undefined, fallback: number): number => {
+    const parsedValue = Number(value);
+
+    return Number.isFinite(parsedValue) && parsedValue > 0 ? parsedValue : fallback;
+};
+
+const parseTrustProxy = (value: string | undefined): boolean | number | string => {
+    if (!value || value === "false") {
+        return false;
+    }
+
+    if (value === "true") {
+        return true;
+    }
+
+    const numericValue = Number(value);
+
+    if (Number.isInteger(numericValue) && numericValue >= 0) {
+        return numericValue;
+    }
+
+    return value;
+};
+
+app.set("trust proxy", parseTrustProxy(process.env.TRUST_PROXY));
 
 const allowedOrigins = (process.env.CORS_ORIGIN ??
     "http://localhost:5173")
@@ -25,6 +52,17 @@ const allowedOrigins = (process.env.CORS_ORIGIN ??
 
 // 🔥 DEBUG: confirm parsed origins
 console.log("Allowed Origins:", allowedOrigins);
+
+const apiRateLimiter = createRateLimiter({
+    windowMs: parseEnvNumber(process.env.RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+    maxRequests: parseEnvNumber(process.env.RATE_LIMIT_MAX_REQUESTS, 100),
+});
+
+const aiRateLimiter = createRateLimiter({
+    windowMs: parseEnvNumber(process.env.AI_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
+    maxRequests: parseEnvNumber(process.env.AI_RATE_LIMIT_MAX_REQUESTS, 20),
+    message: "Too many AI requests, please wait before trying again.",
+});
 
 // Middleware
 app.use(helmet());
@@ -85,10 +123,11 @@ app.get('/', (_req: Request, res: Response) => {
 });
 
 // API Routes
+app.use("/api/v1", apiRateLimiter);
 app.use("/api/v1/query-parser", queryParserRouter);
-app.use("/api/v1/discover", discoverRouter);
-app.use("/api/v1/ai-chatbot", aiChatBotRouter);
-app.use("/api/v1/conversation", conversationRouter);
+app.use("/api/v1/discover", aiRateLimiter, discoverRouter);
+app.use("/api/v1/ai-chatbot", aiRateLimiter, aiChatBotRouter);
+app.use("/api/v1/conversation", aiRateLimiter, conversationRouter);
 
 // 404 handler
 app.use((_req: Request, res: Response) => {
