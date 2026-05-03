@@ -1,4 +1,5 @@
 import dotenv from "dotenv";
+import { scheduleRedditRequest } from "../utils/reddit-request.utils";
 dotenv.config();
 
 export interface SubredditResult {
@@ -41,11 +42,13 @@ function cleanQueryText(value: string): string {
 async function searchReddit(query: string): Promise<SubredditResult[]> {
   const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(query)}&type=sr&limit=5`;
 
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": process.env.REDDIT_USER_AGENT ?? "web:ProblemDiscoveryBot:1.0",
-    },
-  });
+  const res = await scheduleRedditRequest(`search "${query}"`, () =>
+    fetch(url, {
+      headers: {
+        "User-Agent": process.env.REDDIT_USER_AGENT ?? "web:ProblemDiscoveryBot:1.0",
+      },
+    })
+  );
 
   if (!res.ok) {
     console.error("Reddit search failed:", res.status, res.statusText);

@@ -6,20 +6,32 @@ import {
   SessionPoolState,
 } from "../storage.module/storage.service";
 
-const SYSTEM_PROMPT = `
-You are a problem exploration assistant. Your job is to help users deeply understand real-world problems that people face.
+const MAX_DISCUSSION_BODY_LENGTH = 240;
+const MAX_REMAINING_ITEMS_IN_CONTEXT = 8;
+const MAX_HISTORY_MESSAGES = 6;
 
-You have access to a pool of real problems discovered from Reddit. Use these problems as your knowledge base.
+const SYSTEM_PROMPT = 
+`You are a problem exploration assistant helping users understand real-world problems 
+surfaced from Reddit discussions.
 
-Your role is to:
-- Help users understand why a problem exists
-- Break down who is affected and how
-- Explore what solutions currently exist and why they fall short
-- Help users refine their thinking about the problem
-- Suggest angles they may not have considered
+You have been given a pool of discovered problems. This is your only knowledge base — 
+never invent or reference problems outside of it.
 
-Be conversational, insightful and concise. Never make up problems - only reference what you have been given.
-If the user asks about something outside the provided problems, gently redirect them back to the problem context.
+Your role:
+- Help the user understand why a problem exists and who it affects
+- Break down current solutions and why they fall short, and suggest what a better approach could look like
+- Propose concrete ways the user could solve or address the problem themselves
+- Suggest angles or dimensions the user may not have considered
+- Ask follow-up questions to deepen their thinking when relevant
+
+Tone: Direct and analytical. Skip filler phrases. Get to the insight quickly.
+
+When the user references a problem that is not in the provided list:
+- Tell them it is not in the current set and ask if they want to search for it as a new topic.
+
+When the user goes off-topic:
+- Briefly acknowledge, then redirect: "That's outside the current problem set — 
+  want me to stick to what we have, or should we search for problems in that area?"
 `.trim();
 
 // ─────────────────────────────────────────────
@@ -91,6 +103,13 @@ function toDisplayedProblem(
     commentCount: item.commentCount,
     url: item.url,
   };
+}
+
+function compactText(value: string, maxLength: number): string {
+  const compact = value.replace(/\s+/g, " ").trim();
+  return compact.length <= maxLength
+    ? compact
+    : `${compact.slice(0, maxLength).trim()}...`;
 }
 
 function getDisplayedProblems(sessionPool: SessionPoolState) {
@@ -249,14 +268,25 @@ ${problem.upvotes} upvotes ${problem.url}`
 export function buildSessionPoolDiscussionContext(
   sessionPool: SessionPoolState
 ): string {
-  const { displayedProblems } = getDisplayedProblems(sessionPool);
-
-  const fallbackItems =
-    displayedProblems.length > 0
-      ? displayedProblems
-      : sessionPool.items
-          .slice(0, 5)
-          .map((item, index) => toDisplayedProblem(item, index, index));
+  const { referenceIndexes, displayedProblems } = getDisplayedProblems(sessionPool);
+  const trimmedDisplayedProblems = displayedProblems.map((problem) => ({
+    ...problem,
+    body: compactText(problem.body, MAX_DISCUSSION_BODY_LENGTH),
+  }));
+  const remainingItems = sessionPool.items
+    .map((item, index) => ({ item, index }))
+    .filter(({ index }) => !referenceIndexes.includes(index));
+  const remainingSummary = remainingItems
+    .slice(0, MAX_REMAINING_ITEMS_IN_CONTEXT)
+    .map(({ item, index }) => ({
+      sessionIndex: index + 1,
+      title: item.title,
+      bodyPreview: compactText(item.body, 120),
+      category: item.category,
+      upvotes: item.upvotes,
+      commentCount: item.commentCount,
+      url: item.url,
+    }));
 
   return `
 You are discussing problems from the user's current discovered pool.
@@ -269,8 +299,12 @@ The property "displayIndex" is the number the user saw in the chat. Use that num
 Do not swap in a different problem, do not re-rank the list, and do not replace an item because it seems more relevant.
 Only ask for clarification if there is no numbered list available.
 
-Session pool:
-${JSON.stringify(fallbackItems, null, 2)}
+Last displayed problems:
+${trimmedDisplayedProblems.length > 0 ? JSON.stringify(trimmedDisplayedProblems, null, 2) : "none"}
+
+Remaining undisplayed problems: ${remainingItems.length}
+Remaining problem summary:
+${remainingSummary.length > 0 ? JSON.stringify(remainingSummary, null, 2) : "none"}
   `.trim();
 }
 
@@ -309,6 +343,7 @@ export async function chat(
     .filter((message) =>
       historyMode === "user-only" ? message.role === "user" : true
     )
+    .slice(-MAX_HISTORY_MESSAGES)
     .map((message) => ({
       role: message.role as "user" | "assistant",
       content: message.content,

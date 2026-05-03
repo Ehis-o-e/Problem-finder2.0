@@ -1,4 +1,5 @@
 import axios, { AxiosResponse } from "axios";
+import { scheduleRedditRequest } from "../utils/reddit-request.utils";
 
 const REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token";
 const REDDIT_BASE_URL = "https://oauth.reddit.com";
@@ -38,19 +39,19 @@ async function getAccessToken(): Promise<string> {
     return cachedToken;
   }
 
-  const response: AxiosResponse<any> = await axios.post(
-    REDDIT_TOKEN_URL,
-    "grant_type=client_credentials",
-    {
-      auth: {
-        username: process.env.REDDIT_CLIENT_ID!,
-        password: process.env.REDDIT_CLIENT_SECRET!,
-      },
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        "User-Agent": process.env.REDDIT_USER_AGENT!,
-      },
-    }
+  const response: AxiosResponse<any> = await scheduleRedditRequest(
+    "reddit access token",
+    () =>
+      axios.post(REDDIT_TOKEN_URL, "grant_type=client_credentials", {
+        auth: {
+          username: process.env.REDDIT_CLIENT_ID!,
+          password: process.env.REDDIT_CLIENT_SECRET!,
+        },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "User-Agent": process.env.REDDIT_USER_AGENT!,
+        },
+      })
   );
 
   cachedToken = response.data.access_token;
@@ -72,16 +73,20 @@ async function fetchFromSubreddit(
   while (page < MAX_PAGES) {
     const url = `${REDDIT_BASE_URL}/r/${subreddit}/hot`;
 
-    const response: AxiosResponse<any> = await axios.get(url, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "User-Agent": process.env.REDDIT_USER_AGENT!,
-      },
-      params: {
-        limit: POSTS_PER_PAGE,
-        after: after ?? undefined,
-      },
-    });
+    const response: AxiosResponse<any> = await scheduleRedditRequest(
+      `fetch r/${subreddit}`,
+      () =>
+        axios.get(url, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "User-Agent": process.env.REDDIT_USER_AGENT!,
+          },
+          params: {
+            limit: POSTS_PER_PAGE,
+            after: after ?? undefined,
+          },
+        })
+    );
 
     const children = response.data?.data?.children ?? [];
 
