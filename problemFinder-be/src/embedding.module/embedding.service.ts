@@ -15,35 +15,102 @@ export interface AnchorMatch {
 let cachedAnchors: CachedAnchor[] = [];
 let isReady = false;
 
-export async function embed(text: string, retry = true): Promise<number[]> {
-  const response = await fetch(
-    "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
-    {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${process.env.HF_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ inputs: text }),
-    }
-  );
-
-  if (response.status === 503 && retry) {
-    console.log("[Embedding] Model warming up, retrying in 10s...");
-    await new Promise(r => setTimeout(r, 10000));
-    return embed(text, false);
-  }
-
-  if (!response.ok) {
-    const err = await response.text();
-    throw new Error(`HuggingFace API error ${response.status}: ${err}`);
-  }
-
-  const data = await response.json() as number[][];
-  return data[0];
+/* -------------------------------------------------- */
+/* 🔹 Utility: Sleep */
+/* -------------------------------------------------- */
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/* -------------------------------------------------- */
+/* 🔹 Extract embedding safely (handles HF weirdness) */
+/* -------------------------------------------------- */
+function extractEmbedding(data: unknown): number[] {
+  if (!Array.isArray(data)) {
+    throw new Error("Invalid embedding response: not an array");
+  }
+
+  // Case 0: flat array [0.1, 0.2, ...]
+  if (typeof data[0] === "number") {
+    return data as number[];
+  }
+
+  // Case 1: [[...]]
+  if (
+    Array.isArray(data[0]) &&
+    data[0].every((x) => typeof x === "number")
+  ) {
+    return data[0] as number[];
+  }
+
+  // Case 2: [[[...]]]
+  if (
+    Array.isArray(data[0]) &&
+    Array.isArray(data[0][0]) &&
+    data[0][0].every((x) => typeof x === "number")
+  ) {
+    return data[0][0] as number[];
+  }
+
+  console.error("HF RAW RESPONSE:", JSON.stringify(data).slice(0, 300));
+  throw new Error("Invalid embedding shape from HuggingFace");
+}
+
+/* -------------------------------------------------- */
+/* 🔹 Embed single text */
+/* -------------------------------------------------- */
+export async function embed(
+  text: string,
+  attempt = 1
+): Promise<number[]> {
+  try {
+    const response = await fetch(
+      "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.HF_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: text }),
+      }
+    );
+
+    // 🔁 Retry if model warming up
+    if (response.status === 503 && attempt <= 3) {
+      const delay = 5000 * attempt;
+      console.log(`[Embedding] Model warming up... retrying in ${delay}ms`);
+      await sleep(delay);
+      return embed(text, attempt + 1);
+    }
+
+    if (!response.ok) {
+      const err = await response.text();
+      throw new Error(`HF API ${response.status}: ${err}`);
+    }
+
+    const data: unknown = await response.json();
+    return extractEmbedding(data);
+  } catch (err) {
+    if (attempt <= 3) {
+      const delay = 3000 * attempt;
+      console.log(`[Embedding] Retry ${attempt} after error...`);
+      await sleep(delay);
+      return embed(text, attempt + 1);
+    }
+
+    throw err;
+  }
+}
+
+/* -------------------------------------------------- */
+/* 🔹 Cosine similarity (safe) */
+/* -------------------------------------------------- */
 export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) {
+    throw new Error("Vector size mismatch");
+  }
+
   let dot = 0;
   let normA = 0;
   let normB = 0;
@@ -54,24 +121,67 @@ export function cosineSimilarity(a: number[], b: number[]): number {
     normB += b[i] * b[i];
   }
 
-  return dot / (Math.sqrt(normA) * Math.sqrt(normB));
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 }
 
+/* -------------------------------------------------- */
+/* 🔹 Batch embedding */
+/* -------------------------------------------------- */
+export async function embedBatch(
+  texts: string[],
+  chunkSize = 10
+): Promise<number[][]> {
+  const results: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += chunkSize) {
+    const chunk = texts.slice(i, i + chunkSize);
+
+    const vectors = await Promise.all(
+      chunk.map((text) => embed(text))
+    );
+
+    results.push(...vectors);
+
+    if (i + chunkSize < texts.length) {
+      await sleep(100);
+    }
+  }
+
+  return results;
+}
+
+/* -------------------------------------------------- */
+/* 🔹 Initialize embeddings (fast + safe) */
+/* -------------------------------------------------- */
 export async function initEmbeddings(): Promise<void> {
   if (isReady) return;
 
   console.log("Pre-embedding anchors...");
 
-  for (const anchor of FLAT_ANCHORS) {
-    const vector = await embed(anchor.text);
-    cachedAnchors.push({ ...anchor, vector });
-  }
+  try {
+    const texts = FLAT_ANCHORS.map((a) => a.text);
+    const vectors = await embedBatch(texts);
 
-  isReady = true;
-  console.log(`${cachedAnchors.length} anchors cached`);
+    cachedAnchors = FLAT_ANCHORS.map((anchor, i) => ({
+      ...anchor,
+      vector: vectors[i],
+    }));
+
+    isReady = true;
+    console.log(`✅ ${cachedAnchors.length} anchors cached`);
+  } catch (err) {
+    console.error("❌ Failed to initialize embeddings:", err);
+    throw err;
+  }
 }
 
-export function rankAnchorMatches(postVector: number[]): AnchorMatch[] {
+/* -------------------------------------------------- */
+/* 🔹 Rank matches */
+/* -------------------------------------------------- */
+export function rankAnchorMatches(
+  postVector: number[]
+): AnchorMatch[] {
   if (!isReady) {
     throw new Error("Embeddings not initialised - call initEmbeddings() first");
   }
@@ -85,24 +195,13 @@ export function rankAnchorMatches(postVector: number[]): AnchorMatch[] {
     .sort((a, b) => b.score - a.score);
 }
 
-export function findMatches(postVector: number[]): AnchorMatch[] {
+/* -------------------------------------------------- */
+/* 🔹 Filter matches */
+/* -------------------------------------------------- */
+export function findMatches(
+  postVector: number[]
+): AnchorMatch[] {
   return rankAnchorMatches(postVector).filter(
     (match) => match.score >= EMBEDDING_CONFIG.threshold
   );
-}
-
-export async function embedBatch(texts: string[], chunkSize = 20): Promise<number[][]> {
-  const results: number[][] = [];
-
-  for (let i = 0; i < texts.length; i += chunkSize) {
-    const chunk = texts.slice(i, i + chunkSize);
-    const vectors = await Promise.all(chunk.map((t) => embed(t)));
-    results.push(...vectors);
-
-    if (i + chunkSize < texts.length) {
-      await new Promise(r => setTimeout(r, 10));
-    }
-  }
-
-  return results;
 }
