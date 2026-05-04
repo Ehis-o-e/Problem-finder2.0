@@ -1,5 +1,4 @@
 export const EMBEDDING_CONFIG = {
-  model: "Xenova/all-MiniLM-L3-v2",
   threshold: 0.2,
 
   anchorCategories: {

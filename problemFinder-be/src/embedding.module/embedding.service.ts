@@ -12,24 +12,35 @@ export interface AnchorMatch {
   score: number;
 }
 
-let embedder: any = null;
 let cachedAnchors: CachedAnchor[] = [];
 let isReady = false;
 
-async function getEmbedder() {
-  if (embedder) return embedder;
+export async function embed(text: string, retry = true): Promise<number[]> {
+  const response = await fetch(
+    "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+    {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.HF_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ inputs: text }),
+    }
+  );
 
-  const { pipeline } = await import("@xenova/transformers");
-  embedder = await pipeline("feature-extraction", EMBEDDING_CONFIG.model);
+  if (response.status === 503 && retry) {
+    console.log("[Embedding] Model warming up, retrying in 10s...");
+    await new Promise(r => setTimeout(r, 10000));
+    return embed(text, false);
+  }
 
-  console.log(`Embedding model loaded: ${EMBEDDING_CONFIG.model}`);
-  return embedder;
-}
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`HuggingFace API error ${response.status}: ${err}`);
+  }
 
-export async function embed(text: string): Promise<number[]> {
-  const model = await getEmbedder();
-  const output = await model(text, { pooling: "mean", normalize: true });
-  return Array.from(output.data) as number[];
+  const data = await response.json() as number[][];
+  return data[0];
 }
 
 export function cosineSimilarity(a: number[], b: number[]): number {
@@ -80,20 +91,18 @@ export function findMatches(postVector: number[]): AnchorMatch[] {
   );
 }
 
-// embedding.service.ts — add this
-export async function embedBatch(texts: string[], chunkSize = 5): Promise<number[][]> {
+export async function embedBatch(texts: string[], chunkSize = 20): Promise<number[][]> {
   const results: number[][] = [];
 
   for (let i = 0; i < texts.length; i += chunkSize) {
     const chunk = texts.slice(i, i + chunkSize);
     const vectors = await Promise.all(chunk.map((t) => embed(t)));
     results.push(...vectors);
-    
-    // let CPU breathe between chunks
+
     if (i + chunkSize < texts.length) {
       await new Promise(r => setTimeout(r, 10));
     }
   }
 
   return results;
-} 
+}
