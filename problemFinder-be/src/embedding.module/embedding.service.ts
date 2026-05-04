@@ -79,3 +79,21 @@ export function findMatches(postVector: number[]): AnchorMatch[] {
     (match) => match.score >= EMBEDDING_CONFIG.threshold
   );
 }
+
+// embedding.service.ts — add this
+export async function embedBatch(texts: string[], chunkSize = 5): Promise<number[][]> {
+  const results: number[][] = [];
+
+  for (let i = 0; i < texts.length; i += chunkSize) {
+    const chunk = texts.slice(i, i + chunkSize);
+    const vectors = await Promise.all(chunk.map((t) => embed(t)));
+    results.push(...vectors);
+    
+    // let CPU breathe between chunks
+    if (i + chunkSize < texts.length) {
+      await new Promise(r => setTimeout(r, 10));
+    }
+  }
+
+  return results;
+} 
