@@ -65,7 +65,7 @@ export async function embed(
 ): Promise<number[]> {
   try {
     const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/sentence-transformers/all-MiniLM-L6-v2/pipeline/feature-extraction",
+      "https://router.huggingface.co/hf-inference/models/sentence-transformers/multi-qa-MiniLM-L6-cos-v1/pipeline/feature-extraction",
       {
         method: "POST",
         headers: {
