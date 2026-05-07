@@ -42,7 +42,7 @@ function cleanMessageText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
-async function normalizeUserMessageForRouting(userMessage: string): Promise<string> {
+export async function normalizeUserMessageForRouting(userMessage: string): Promise<string> {
   const cleanedUserMessage = cleanMessageText(userMessage);
 
   if (!cleanedUserMessage) {
@@ -89,7 +89,7 @@ ${cleanedUserMessage}
   }
 }
 
-async function extractTopicFromDiscoveryQuery(normalizedMessage: string): Promise<string> {
+export async function extractTopicFromDiscoveryQuery(normalizedMessage: string): Promise<string> {
   const prompt = `
 Extract only the core topic from this problem discovery request.
 Remove all action words, intent words, and filler.
