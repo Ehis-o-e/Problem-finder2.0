@@ -2,111 +2,40 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-background-primary: #f3f4f6;
-  --color-background-secondary: #e9edf3;
-  --color-background-accent: #d9e4f2;
-  --color-surface-primary: #ffffff;
-  --color-surface-secondary: #f0f3f8;
-  --color-surface-tertiary: #eef2f7;
-  --color-border-primary: #d7dee7;
-  --color-border-strong: #bcc7d6;
-  --color-text-primary: #141b2d;
-  --color-text-secondary: #5f6b7c;
-  --color-text-muted: #8f9aaa;
-  --color-text-accent: #4d74b8;
-  --color-accent-primary: #141b2d;
-  --color-accent-foreground: #f9fbff;
-  --color-assistant-bubble: #ffffff;
-  --color-user-bubble: #dfe8f6;
-  --color-avatar-assistant: #dbe4f1;
-  --color-avatar-user: #1b2437;
-  --color-avatar-user-text: #f9fbff;
-  --color-overlay-soft: color-mix(in srgb, var(--color-accent-primary) 8%, transparent);
-  --color-overlay-strong: color-mix(in srgb, var(--color-accent-primary) 14%, transparent);
-  --color-shadow-soft: color-mix(in srgb, var(--color-accent-primary) 12%, transparent);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --color-background-primary: #10141b;
-    --color-background-secondary: #151b24;
-    --color-background-accent: #223248;
-    --color-surface-primary: #171d27;
-    --color-surface-secondary: #1d2531;
-    --color-surface-tertiary: #243041;
-    --color-border-primary: #2b3747;
-    --color-border-strong: #415067;
-    --color-text-primary: #eef4ff;
-    --color-text-secondary: #b0bfd3;
-    --color-text-muted: #8f9eb2;
-    --color-text-accent: #a8c4ff;
-    --color-accent-primary: #eef4ff;
-    --color-accent-foreground: #10141b;
-    --color-assistant-bubble: #1c2430;
-    --color-user-bubble: #314056;
-    --color-avatar-assistant: #253142;
-    --color-avatar-user: #eef4ff;
-    --color-avatar-user-text: #10141b;
-    --color-overlay-soft: color-mix(in srgb, var(--color-accent-primary) 10%, transparent);
-    --color-overlay-strong: color-mix(in srgb, var(--color-accent-primary) 18%, transparent);
-    --color-shadow-soft: color-mix(in srgb, var(--color-accent-primary) 14%, transparent);
+@layer base {
+  * {
+    @apply box-border;
   }
-}
 
-* {
-  box-sizing: border-box;
-}
-
-/* THIS IS THE FIX — height not min-height */
-html,
-body,
-#root {
-  height: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-}
-
-body {
-  min-width: 320px;
-  background-color: var(--color-background-primary);
-  color: var(--color-text-primary);
-  font-family: Inter, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  font-size: 16px;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-button,
-textarea {
-  font: inherit;
-}
-
-@keyframes message-in {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
+  html,
+  body,
+  #root {
+    @apply m-0 h-full overflow-hidden;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  body {
+    @apply min-w-[320px] bg-[#0f1117] text-[#f5f5f5] antialiased;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-}
 
-.message-in {
-  animation: message-in 0.18s ease forwards;
-}
+  button,
+  textarea {
+    font: inherit;
+  }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 4px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--color-border-primary);
-  border-radius: 4px;
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #2e3250;
+    border-radius: 999px;
+  }
 }

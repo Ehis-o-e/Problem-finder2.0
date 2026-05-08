@@ -34,6 +34,11 @@ interface RedditAboutResponse {
   };
 }
 
+// In-memory cache for subreddit metadata.
+// Prevents repeated Reddit API calls for the same subreddit
+// across different searches on the live server.
+const metadataCache = new Map<string, SubredditResult>();
+
 function cleanQueryText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -100,6 +105,12 @@ async function searchReddit(query: string): Promise<{ name: string }[]> {
 }
 
 async function fetchRedditMetadata(subredditName: string): Promise<SubredditResult | null> {
+  // Return cached result if available — avoids hitting Reddit again
+  if (metadataCache.has(subredditName)) {
+    console.log(`Cache hit for r/${subredditName}`);
+    return metadataCache.get(subredditName)!;
+  }
+
   try {
     const url = `https://www.reddit.com/r/${subredditName}/about.json`;
     console.log("Reddit metadata URL:", url);
@@ -120,11 +131,15 @@ async function fetchRedditMetadata(subredditName: string): Promise<SubredditResu
     const data = await res.json() as RedditAboutResponse;
     if (!data.data || data.data.subscribers < 1000) return null;
 
-    return {
+    const metadata: SubredditResult = {
       name: data.data.display_name,
       subscribers: data.data.subscribers,
       description: data.data.public_description?.trim() || "No description available",
     };
+
+    // Store in cache before returning
+    metadataCache.set(subredditName, metadata);
+    return metadata;
   } catch (error) {
     console.error(`fetchRedditMetadata threw an error for r/${subredditName}:`, error);
     return null;
@@ -146,7 +161,7 @@ async function findBestSubreddits(searchQuery: string): Promise<SubredditResult[
     }
   }
 
-  // Tier 1 — Brave search (context-aware), capped at 5
+  // Tier 1 — Brave search (context-aware)
   const braveNames = await searchBrave(searchQuery);
   await addSubreddits(braveNames);
 
@@ -157,7 +172,7 @@ async function findBestSubreddits(searchQuery: string): Promise<SubredditResult[
     await addSubreddits(redditResults.map((r) => r.name));
   }
 
-  // Sort by subscribers within whatever we have and cap at 5
+  // Sort by subscribers and cap at 5
   return collected
     .sort((a, b) => b.subscribers - a.subscribers)
     .slice(0, 5);
@@ -171,7 +186,6 @@ export async function parseQuery(rawQuery: string): Promise<QueryParserResult> {
   console.log("Original query:", rawQuery);
   console.log("Category:", category);
   console.log("Subreddits found:", subreddits);
-  
 
   return {
     category,
